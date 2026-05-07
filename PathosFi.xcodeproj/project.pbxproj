@@ -6,8 +6,15 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		9A586C1B2FABF78200D7B345 /* Charts.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9A586C1A2FABF78200D7B345 /* Charts.framework */; };
+		9A586C1D2FABF78D00D7B345 /* SwiftData.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9A586C1C2FABF78D00D7B345 /* SwiftData.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		9A586BC52FAAB17000D7B345 /* PathosFi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PathosFi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9A586C1A2FABF78200D7B345 /* Charts.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Charts.framework; path = System/Library/Frameworks/Charts.framework; sourceTree = SDKROOT; };
+		9A586C1C2FABF78D00D7B345 /* SwiftData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftData.framework; path = System/Library/Frameworks/SwiftData.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -23,6 +30,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9A586C1D2FABF78D00D7B345 /* SwiftData.framework in Frameworks */,
+				9A586C1B2FABF78200D7B345 /* Charts.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -33,6 +42,7 @@
 			isa = PBXGroup;
 			children = (
 				9A586BC72FAAB17000D7B345 /* PathosFi */,
+				9A586C192FABF78200D7B345 /* Frameworks */,
 				9A586BC62FAAB17000D7B345 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -43,6 +53,15 @@
 				9A586BC52FAAB17000D7B345 /* PathosFi.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		9A586C192FABF78200D7B345 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				9A586C1C2FABF78D00D7B345 /* SwiftData.framework */,
+				9A586C1A2FABF78200D7B345 /* Charts.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -261,6 +280,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -293,6 +313,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
