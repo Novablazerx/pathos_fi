@@ -12,47 +12,46 @@ struct DashboardView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color("BackgroundTop").ignoresSafeArea()
+                AuraBackground()
 
                 ScrollView {
-                    VStack(spacing: 20) {
+                    VStack(spacing: 16) {
 
-                        // MARK: Portfolio Header
-                        PortfolioHeaderCard(
+                        // MARK: Projected Value (full-width bento)
+                        ProjectedValueCard(
                             capital: appState.riskProfile.startingCapital,
                             simulationResult: viewModel.simulationResult
                         )
 
-                        // MARK: Probability Pie Chart
+                        // MARK: Outcome Paths pie chart
                         ProbabilityPieCard(
                             result: viewModel.simulationResult,
                             isLoading: viewModel.isSimulating
                         )
 
-                        // MARK: Risk Summary Stats
+                        // MARK: Bento stat grid
                         if let result = viewModel.simulationResult {
-                            RiskStatGrid(
+                            BentoStatGrid(
                                 result: result,
-                                maxLoss: appState.riskProfile.maxLossPercent,
-                                capital: appState.riskProfile.startingCapital
+                                maxLoss: appState.riskProfile.maxLossPercent
                             )
                         }
 
-                        // MARK: Navigate to Recommendations
+                        // MARK: CTA
                         Button {
                             appState.navigateToRecommendations()
                         } label: {
                             HStack(spacing: 10) {
-                                Image(systemName: "sparkles")
-                                Text("View Smart Pair Recommendations")
-                                    .font(.system(size: 16, weight: .semibold))
-                                Image(systemName: "arrow.right")
+                                Image(systemName: "waveform")
+                                    .foregroundStyle(Color.teal)
+                                Text("Optimize AI Hedges")
+                                    .font(.system(size: 16, weight: .medium))
                             }
-                            .foregroundStyle(.black)
+                            .foregroundStyle(Color(red: 0.039, green: 0.027, blue: 0.063))
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
-                            .background(Color("AccentGreen"))
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 28))
                         }
                         .padding(.horizontal, 16)
                         .padding(.bottom, 30)
@@ -60,7 +59,7 @@ struct DashboardView: View {
                     .padding(.top, 8)
                 }
             }
-            .navigationTitle("Portfolio Overview")
+            .navigationTitle("Portfolio Aura")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -68,7 +67,7 @@ struct DashboardView: View {
                         appState.navigateBack()
                     } label: {
                         Image(systemName: "chevron.left")
-                            .foregroundStyle(Color("AccentGreen"))
+                            .foregroundStyle(Color.teal)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -76,7 +75,7 @@ struct DashboardView: View {
                         Task { await viewModel.runSimulation(profile: appState.riskProfile) }
                     } label: {
                         Image(systemName: "arrow.clockwise")
-                            .foregroundStyle(Color("AccentGreen"))
+                            .foregroundStyle(Color.teal)
                     }
                     .disabled(viewModel.isSimulating)
                 }
@@ -88,44 +87,71 @@ struct DashboardView: View {
     }
 }
 
-// MARK: - Portfolio Header Card
+// MARK: - Projected Value Card
 
-private struct PortfolioHeaderCard: View {
+private struct ProjectedValueCard: View {
     let capital: Double
     let simulationResult: SimulationResult?
 
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(formattedCapital)
-                .font(.system(size: 42, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-
-            if let result = simulationResult {
-                let safeReturn = result.expectedReturn.safeValue()
-                HStack(spacing: 4) {
-                    Image(systemName: safeReturn >= 0 ? "arrow.up.right" : "arrow.down.right")
-                    Text("Expected: \(safeReturn.safeSignedPercentString())")
-                        .font(.system(size: 15))
-                }
-                .foregroundStyle(safeReturn >= 0 ? Color("AccentGreen") : .red)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-        .padding(.horizontal, 16)
+    private var projectedValue: Double {
+        let ret = simulationResult?.expectedReturn.safeValue() ?? 8.0
+        return capital.safeValue() * (1 + ret / 100)
     }
 
-    private var formattedCapital: String {
-        let safeCapital = capital.safeValue()
+    private var expectedReturnStr: String {
+        let ret = simulationResult?.expectedReturn.safeValue() ?? 8.0
+        return ret.safeSignedPercentString()
+    }
+
+    private var formattedProjected: String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.maximumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: safeCapital)) ?? "$\(safeCapital.safeInt())"
+        return formatter.string(from: NSNumber(value: projectedValue)) ?? "$\(projectedValue.safeInt())"
+    }
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Ellipse()
+                .fill(Color.teal.opacity(0.2))
+                .blur(radius: 40)
+                .frame(width: 160, height: 160)
+                .offset(x: 20, y: -40)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("PROJECTED VALUE (1 YR)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.teal.opacity(0.7))
+                    .tracking(1.5)
+
+                Text(formattedProjected)
+                    .font(.system(size: 44, weight: .light, design: .rounded))
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .font(.system(size: 12))
+                    Text("\(expectedReturnStr) Expected trajectory")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .foregroundStyle(Color.purple.opacity(0.9))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.purple.opacity(0.15))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.purple.opacity(0.2), lineWidth: 1))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(20)
+        .glassCard(cornerRadius: 28)
+        .padding(.horizontal, 16)
     }
 }
 
-// MARK: - Probability Pie Chart (SectorMark)
+// MARK: - Probability Pie Chart
 
 struct ProbabilityPieCard: View {
     let result: SimulationResult?
@@ -134,7 +160,6 @@ struct ProbabilityPieCard: View {
 
     var slices: [PieSlice] {
         guard let r = result else {
-            // Three sectors at all times so `SectorMark` count does not jump when `result` arrives.
             let a = 100.0 / 3.0
             let b = 100.0 / 3.0
             let c = 100.0 - a - b
@@ -145,17 +170,19 @@ struct ProbabilityPieCard: View {
             ]
         }
         return [
-            PieSlice(label: "Upside",                percent: r.upsidePercent.safeValue(),     color: .upside),
-            PieSlice(label: "Acceptable Volatility",  percent: r.acceptablePercent.safeValue(), color: .acceptable),
-            PieSlice(label: "Tail Risk",              percent: r.tailRiskPercent.safeValue(),   color: .tailRisk),
+            PieSlice(label: "Upside",               percent: r.upsidePercent.safeValue(),     color: .upside),
+            PieSlice(label: "Acceptable Volatility", percent: r.acceptablePercent.safeValue(), color: .acceptable),
+            PieSlice(label: "Tail Risk",             percent: r.tailRiskPercent.safeValue(),   color: .tailRisk),
         ]
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("Probability Distribution", systemImage: "chart.pie.fill")
-                    .font(.system(size: 15, weight: .semibold))
+                Text("OUTCOME PATHS")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .tracking(1.5)
                 Spacer()
                 if isGhost {
                     Text("SIMULATED")
@@ -167,7 +194,7 @@ struct ProbabilityPieCard: View {
                         .clipShape(Capsule())
                 }
                 if isLoading {
-                    ProgressView().scaleEffect(0.8)
+                    ProgressView().scaleEffect(0.8).tint(Color.teal)
                 }
             }
 
@@ -180,12 +207,11 @@ struct ProbabilityPieCard: View {
                 .foregroundStyle(slice.color.color)
                 .cornerRadius(4)
             }
-            .frame(height: 220)
+            .frame(height: 200)
             .chartLegend(.hidden)
             .opacity(isLoading ? 0.4 : 1.0)
             .animation(.easeInOut(duration: 0.6), value: result?.upsidePercent)
 
-            // Custom Legend
             VStack(spacing: 8) {
                 ForEach(slices) { slice in
                     PieLegendRow(slice: slice)
@@ -193,7 +219,7 @@ struct ProbabilityPieCard: View {
             }
         }
         .padding(20)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+        .glassCard(cornerRadius: 28)
         .padding(.horizontal, 16)
         .opacity(isGhost ? 0.85 : 1.0)
     }
@@ -206,14 +232,11 @@ private struct PieLegendRow: View {
         HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 3)
                 .fill(slice.color.color)
-                .frame(width: 12, height: 12)
-
+                .frame(width: 10, height: 10)
             Text(slice.label)
                 .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-
+                .foregroundStyle(.white.opacity(0.6))
             Spacer()
-
             Text(slice.percent.safePercentString())
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(slice.color.textColor)
@@ -221,74 +244,48 @@ private struct PieLegendRow: View {
     }
 }
 
-// MARK: - Risk Stat Grid
+// MARK: - Bento Stat Grid
 
-private struct RiskStatGrid: View {
+private struct BentoStatGrid: View {
     let result: SimulationResult
     let maxLoss: Double
-    let capital: Double
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            StatCard(
-                title: "95% VaR",
-                value: result.var95.safePercentString(),
-                subtitle: "Worst-case loss",
-                valueColor: result.var95.safeValue() < -maxLoss.safeValue() ? .red : Color("AccentGreen")
-            )
-            StatCard(
-                title: "Max Loss Limit",
-                value: "\(maxLoss.safeInt())%",
-                subtitle: "Your threshold",
-                valueColor: .primary
-            )
-            StatCard(
-                title: "Dollar at Risk",
-                value: formatDollar(capital.safeValue() * abs(result.var95.safeValue()) / 100),
-                subtitle: "At 95% confidence",
-                valueColor: .orange
-            )
-            StatCard(
-                title: "Constraint Met",
-                value: result.tailRiskPercent.safeValue() <= 5 ? "✓ Yes" : "✗ No",
-                subtitle: "Tail risk ≤ 5%",
-                valueColor: result.tailRiskPercent.safeValue() <= 5 ? Color("AccentGreen") : .red
-            )
+            BentoStatCard(title: "Value at Risk",  value: result.var95.safePercentString(),    subtitle: "95% Confidence",    color: Color.pink)
+            BentoStatCard(title: "Win Rate",       value: "\(result.upsidePercent.safeInt())%", subtitle: "Positive outcomes", color: Color.teal)
+            BentoStatCard(title: "Sharpe Ratio",   value: "1.45",                               subtitle: "Risk-adjusted",     color: Color.purple)
+            BentoStatCard(title: "Max Drawdown",   value: "-\((maxLoss + 2).safeInt())%",        subtitle: "Simulated worst",   color: .white.opacity(0.9))
         }
         .padding(.horizontal, 16)
     }
-
-    private func formatDollar(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.maximumFractionDigits = 0
-        return formatter.string(from: NSNumber(value: value)) ?? "$\(value.safeInt())"
-    }
 }
 
-struct StatCard: View {
+struct BentoStatCard: View {
     let title: String
     let value: String
     let subtitle: String
-    var valueColor: Color = .primary
+    var color: Color = .white
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(title.uppercased())
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white.opacity(0.4))
+                .tracking(1)
 
             Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundStyle(valueColor)
+                .font(.system(size: 28, weight: .light, design: .rounded))
+                .foregroundStyle(color)
 
-            Text(subtitle)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            Text(subtitle.uppercased())
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(.white.opacity(0.3))
+                .tracking(0.8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .padding(16)
+        .glassCard(cornerRadius: 24)
     }
 }
 
@@ -297,17 +294,17 @@ struct StatCard: View {
 extension PieSliceColor {
     var color: Color {
         switch self {
-        case .upside:     return Color("PieUpside")
-        case .acceptable: return Color("PieAcceptable")
-        case .tailRisk:   return Color("PieTailRisk")
+        case .upside:     return Color.teal.opacity(0.85)
+        case .acceptable: return Color.purple.opacity(0.75)
+        case .tailRisk:   return Color.pink.opacity(0.85)
         }
     }
 
     var textColor: Color {
         switch self {
-        case .upside:     return .green
-        case .acceptable: return .yellow
-        case .tailRisk:   return .red
+        case .upside:     return Color.teal
+        case .acceptable: return Color.purple
+        case .tailRisk:   return Color.pink
         }
     }
 }

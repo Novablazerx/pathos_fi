@@ -6,181 +6,199 @@ struct RiskAssessmentView: View {
 
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [Color("BackgroundTop"), Color("BackgroundBottom")],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            AuraBackground()
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    // MARK: Header
-                    VStack(spacing: 8) {
-                        Image(systemName: "chart.line.uptrend.xyaxis.circle.fill")
-                            .font(.system(size: 52))
-                            .foregroundStyle(.white.opacity(0.9))
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: 0) {
+
+                        // MARK: Mascot
+                        MascotView()
                             .padding(.top, 60)
+                            .padding(.bottom, 24)
 
-                        Text("PathosFi")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
+                        // MARK: Header
+                        VStack(spacing: 6) {
+                            Text("PathosFi")
+                                .font(.system(size: 36, weight: .heavy, design: .rounded))
+                                .foregroundStyle(.clear)
+                                .overlay(
+                                    LinearGradient(
+                                        colors: [.teal, .white, Color.purple.opacity(0.9)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                    .mask(
+                                        Text("PathosFi")
+                                            .font(.system(size: 36, weight: .heavy, design: .rounded))
+                                    )
+                                )
 
-                        Text("Invest with Mathematical Peace of Mind.")
-                            .font(.system(size: 15, weight: .regular))
-                            .foregroundStyle(.white.opacity(0.7))
-                            .multilineTextAlignment(.center)
-                    }
-                    .padding(.bottom, 40)
+                            Text("Invest with Mathematical Peace of Mind.")
+                                .font(.system(size: 14, weight: .light))
+                                .foregroundStyle(.white.opacity(0.5))
+                                .multilineTextAlignment(.center)
+                                .tracking(0.3)
+                        }
+                        .padding(.bottom, 32)
 
-                    // MARK: Input Card
-                    VStack(spacing: 28) {
+                        // MARK: Input Card
+                        VStack(spacing: 0) {
 
-                        // Starting Capital
-                        InputSection(title: "Starting Capital", icon: "dollarsign.circle.fill") {
-                            VStack(spacing: 12) {
+                            // Starting Capital
+                            VStack(spacing: 10) {
+                                Text("STARTING CAPITAL")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(Color.teal.opacity(0.7))
+                                    .tracking(2)
+
                                 Text(viewModel.formattedCapital)
-                                    .font(.system(size: 36, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Color("AccentGreen"))
-
-                                NumericKeypadView(value: $viewModel.capitalInput,
-                                                  displayValue: $viewModel.capitalRaw)
+                                    .font(.system(size: 48, weight: .light, design: .rounded))
+                                    .foregroundStyle(Color.teal)
+                                    .minimumScaleFactor(0.6)
+                                    .lineLimit(1)
                             }
-                        }
+                            .padding(.bottom, 24)
 
-                        Divider().opacity(0.12)
+                            // Keypad
+                            NumericKeypadView(
+                                value: $viewModel.capitalInput,
+                                displayValue: $viewModel.capitalRaw
+                            )
+                            .padding(.bottom, 24)
 
-                        // Time Horizon
-                        InputSection(title: "Time Horizon", icon: "calendar.circle.fill") {
-                            HStack(spacing: 8) {
-                                ForEach(TimeHorizon.allCases) { horizon in
-                                    TimeHorizonPill(
-                                        label: horizon.rawValue,
-                                        isSelected: viewModel.selectedHorizon == horizon
-                                    ) {
-                                        viewModel.selectedHorizon = horizon
-                                    }
-                                }
-                            }
-                        }
+                            // Divider
+                            Rectangle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.clear, .white.opacity(0.1), .clear],
+                                        startPoint: .leading, endPoint: .trailing
+                                    )
+                                )
+                                .frame(height: 1)
+                                .padding(.bottom, 24)
 
-                        Divider().opacity(0.12)
-
-                        // Sleep-at-Night Slider
-                        InputSection(
-                            title: "Sleep-at-Night Limit",
-                            icon: "moon.zzz.fill",
-                            subtitle: "Max % you can lose before you panic"
-                        ) {
+                            // Max Drawdown Slider
                             VStack(spacing: 16) {
                                 HStack {
-                                    Text("1%")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                    Text("MAX DRAWDOWN LIMIT")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.white.opacity(0.5))
+                                        .tracking(1.5)
                                     Spacer()
                                     Text("\(viewModel.maxLossPercent.safeInt(fallback: 15))%")
-                                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                                        .font(.system(size: 26, weight: .light, design: .rounded))
                                         .foregroundStyle(viewModel.lossColor)
-                                    Spacer()
-                                    Text("50%")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
                                 }
 
                                 Slider(value: $viewModel.maxLossPercent, in: 1...50, step: 1)
                                     .tint(viewModel.lossColor)
-
-                                Text(viewModel.lossDescription)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
                             }
                         }
+                        .padding(24)
+                        .glassCard(cornerRadius: 32)
+                        .padding(.horizontal, 20)
 
+                        Spacer(minLength: 32)
                     }
-                    .padding(24)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))
-                    .padding(.horizontal, 20)
-
-                    // MARK: CTA Button
-                    Button {
-                        appState.riskProfile = RiskProfileInput(
-                            startingCapital: viewModel.capitalRaw,
-                            timeHorizon: viewModel.selectedHorizon,
-                            maxLossPercent: viewModel.maxLossPercent
-                        )
-                        appState.navigateToDashboard()
-                    } label: {
-                        HStack(spacing: 10) {
-                            Text("Generate My Risk Profile")
-                                .font(.system(size: 17, weight: .semibold))
-                            Image(systemName: "arrow.right")
-                        }
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 56)
-                        .background(Color("AccentGreen"))
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 24)
-                    .padding(.bottom, 50)
                 }
+
+                // MARK: CTA
+                GradientCTAButton(label: "Run Simulation") {
+                    appState.riskProfile = RiskProfileInput(
+                        startingCapital: viewModel.capitalRaw,
+                        timeHorizon: viewModel.selectedHorizon,
+                        maxLossPercent: viewModel.maxLossPercent
+                    )
+                    appState.navigateToDashboard()
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 32)
+                .padding(.top, 12)
             }
         }
     }
 }
 
-// MARK: - Sub-components
+// MARK: - Animated Glass Mascot
 
-private struct InputSection<Content: View>: View {
-    let title: String
-    let icon: String
-    var subtitle: String? = nil
-    @ViewBuilder var content: () -> Content
+private struct MascotView: View {
+    @State private var rotating = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundStyle(Color("AccentGreen"))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.primary)
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            content()
+        ZStack {
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [Color.purple.opacity(0.4), Color.teal.opacity(0.2), .clear],
+                        center: .center, startRadius: 0, endRadius: 60
+                    )
+                )
+                .blur(radius: 20)
+                .frame(width: 120, height: 120)
+
+            RoundedRectangle(cornerRadius: 28)
+                .fill(.white.opacity(0.1))
+                .overlay(RoundedRectangle(cornerRadius: 28).stroke(.white.opacity(0.3), lineWidth: 1))
+                .frame(width: 72, height: 72)
+                .rotationEffect(.degrees(rotating ? 45 : 12))
+                .animation(.easeInOut(duration: 4).repeatForever(autoreverses: true), value: rotating)
+
+            RoundedRectangle(cornerRadius: 18)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.teal.opacity(0.9), Color.purple.opacity(0.9)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 44, height: 44)
+                .rotationEffect(.degrees(rotating ? -45 : -12))
+                .animation(.easeInOut(duration: 4).repeatForever(autoreverses: true), value: rotating)
+                .overlay(
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .rotationEffect(.degrees(rotating ? -45 : -12))
+                        .animation(.easeInOut(duration: 4).repeatForever(autoreverses: true), value: rotating)
+                )
         }
+        .frame(width: 120, height: 120)
+        .onAppear { rotating = true }
     }
 }
 
-private struct TimeHorizonPill: View {
+// MARK: - Gradient CTA Button
+
+struct GradientCTAButton: View {
     let label: String
-    let isSelected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(label)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(isSelected ? .black : .secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(
-                    isSelected
-                        ? Color("AccentGreen")
-                        : Color(.systemGray5)
+            ZStack {
+                LinearGradient(
+                    colors: [Color.teal.opacity(0.85), Color.purple.opacity(0.85)],
+                    startPoint: .leading, endPoint: .trailing
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                Color.black.opacity(0.25)
+                    .clipShape(RoundedRectangle(cornerRadius: 27))
+                    .padding(1)
+
+                HStack(spacing: 10) {
+                    Text(label)
+                        .font(.system(size: 17, weight: .medium))
+                        .tracking(0.3)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.teal.opacity(0.9))
+                }
+                .foregroundStyle(.white)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 60)
+            .clipShape(RoundedRectangle(cornerRadius: 28))
         }
-        .animation(.easeInOut(duration: 0.15), value: isSelected)
     }
 }
 
@@ -198,20 +216,24 @@ struct NumericKeypadView: View {
     ]
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             ForEach(keys, id: \.self) { row in
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     ForEach(row, id: \.self) { key in
                         Button {
                             handleKey(key)
                         } label: {
                             Text(key)
-                                .font(.system(size: 18, weight: .medium, design: .rounded))
-                                .foregroundStyle(.primary)
+                                .font(.system(size: 18, weight: .light, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.9))
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 44)
-                                .background(Color(.systemGray6))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .frame(height: 54)
+                                .background(.white.opacity(0.04))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 22)
+                                        .stroke(.white.opacity(0.05), lineWidth: 1)
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 22))
                         }
                     }
                 }
@@ -224,7 +246,6 @@ struct NumericKeypadView: View {
         case "⌫":
             if !value.isEmpty { value.removeLast() }
         case "K":
-            // Multiply current value by 1000
             if let current = Double(value), current > 0 {
                 value = String((current * 1000).safeInt())
             }
@@ -232,5 +253,63 @@ struct NumericKeypadView: View {
             if value.count < 8 { value += key }
         }
         displayValue = Double(value) ?? 0
+    }
+}
+
+// MARK: - Shared: AuraBackground
+
+struct AuraBackground: View {
+    @State private var pulse = false
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.039, green: 0.027, blue: 0.063)
+                .ignoresSafeArea()
+
+            Ellipse()
+                .fill(Color.purple.opacity(0.22))
+                .blur(radius: 80)
+                .frame(width: 380, height: 380)
+                .offset(x: -80, y: -300)
+                .scaleEffect(pulse ? 1.05 : 0.95)
+                .animation(.easeInOut(duration: 8).repeatForever(autoreverses: true), value: pulse)
+
+            Ellipse()
+                .fill(Color.teal.opacity(0.18))
+                .blur(radius: 70)
+                .frame(width: 320, height: 320)
+                .offset(x: 120, y: 80)
+                .scaleEffect(pulse ? 0.95 : 1.05)
+                .animation(.easeInOut(duration: 10).repeatForever(autoreverses: true), value: pulse)
+
+            Ellipse()
+                .fill(Color.indigo.opacity(0.18))
+                .blur(radius: 70)
+                .frame(width: 280, height: 280)
+                .offset(x: 0, y: 400)
+        }
+        .onAppear { pulse = true }
+    }
+}
+
+// MARK: - Shared: GlassCard modifier
+
+struct GlassCard: ViewModifier {
+    var cornerRadius: CGFloat = 28
+
+    func body(content: Content) -> some View {
+        content
+            .background(.white.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(.white.opacity(0.08), lineWidth: 1)
+            )
+    }
+}
+
+extension View {
+    func glassCard(cornerRadius: CGFloat = 28) -> some View {
+        modifier(GlassCard(cornerRadius: cornerRadius))
     }
 }

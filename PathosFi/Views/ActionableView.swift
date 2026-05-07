@@ -14,7 +14,7 @@ struct ActionableView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color("BackgroundTop").ignoresSafeArea()
+                AuraBackground()
 
                 if viewModel.isOptimising {
                     OptimisationLoadingView()
@@ -22,7 +22,13 @@ struct ActionableView: View {
                     ScrollView {
                         VStack(spacing: 16) {
 
-                            VaRConstraintBanner(maxLoss: appState.riskProfile.maxLossPercent)
+                            AuraConstraintBanner(maxLoss: appState.riskProfile.maxLossPercent)
+
+                            // Ghost simulation progress card
+                            if viewModel.simulatingPairId != nil {
+                                SynthesisProgressCard()
+                                    .transition(.scale(scale: 0.95).combined(with: .opacity))
+                            }
 
                             if let ghostResult = viewModel.ghostSimulationResult {
                                 ProbabilityPieCard(result: ghostResult, isGhost: true)
@@ -64,10 +70,10 @@ struct ActionableView: View {
                         }
                         .padding(.top, 8)
                     }
-                    .animation(.easeInOut, value: viewModel.ghostSimulationResult != nil)
+                    .animation(.easeInOut, value: viewModel.simulatingPairId != nil)
                 }
             }
-            .navigationTitle("Smart Pairs")
+            .navigationTitle("AI Hedges")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -75,7 +81,7 @@ struct ActionableView: View {
                         appState.navigateBack()
                     } label: {
                         Image(systemName: "chevron.left")
-                            .foregroundStyle(Color("AccentGreen"))
+                            .foregroundStyle(Color.teal)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -95,30 +101,85 @@ struct ActionableView: View {
     }
 }
 
-// MARK: - VaR Constraint Banner
+// MARK: - Aura Constraint Banner
 
-private struct VaRConstraintBanner: View {
+private struct AuraConstraintBanner: View {
     let maxLoss: Double
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "checkmark.shield.fill")
-                .foregroundStyle(Color("AccentGreen"))
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(Color.teal.opacity(0.1))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "shield.lefthalf.filled")
+                    .foregroundStyle(Color.teal)
+                    .font(.system(size: 16))
+            }
             VStack(alignment: .leading, spacing: 2) {
-                Text("95% VaR Constraint Active")
+                Text("Aura Constraint Active")
                     .font(.system(size: 13, weight: .semibold))
-                Text("All pairs keep tail risk ≤ 5% of outcomes")
+                    .foregroundStyle(.white.opacity(0.9))
+                Text("Optimizing to keep max loss below \(maxLoss.safeInt())%")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.5))
             }
             Spacer()
-            Text("\(maxLoss.safeInt())%")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundStyle(Color("AccentGreen"))
         }
         .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .background(
+            LinearGradient(
+                colors: [Color.purple.opacity(0.12), Color.teal.opacity(0.12)],
+                startPoint: .leading, endPoint: .trailing
+            )
+        )
+        .glassCard(cornerRadius: 24)
         .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - Synthesis Progress Card
+
+private struct SynthesisProgressCard: View {
+    @State private var progress: CGFloat = 0
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "hexagon.fill")
+                    .foregroundStyle(Color.teal)
+                    .font(.system(size: 14))
+                    .rotationEffect(.degrees(progress * 360))
+                    .animation(.linear(duration: 3), value: progress)
+                Text("Synthesizing Hedge Scenario...")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.teal)
+            }
+
+            GeometryReader { geo in
+                Capsule()
+                    .fill(.white.opacity(0.05))
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.purple.opacity(0.8), Color.teal.opacity(0.8)],
+                                    startPoint: .leading, endPoint: .trailing
+                                )
+                            )
+                            .frame(width: geo.size.width * progress)
+                    }
+            }
+            .frame(height: 6)
+        }
+        .padding(20)
+        .glassCard(cornerRadius: 28)
+        .padding(.horizontal, 16)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 3)) {
+                progress = 1.0
+            }
+        }
     }
 }
 
@@ -134,28 +195,66 @@ struct SmartPairCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            VStack(alignment: .leading, spacing: 6) {
+            // Header
+            VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     HedgeTypeBadge(hedgeType: pair.hedgeType)
                     Spacer()
                     Button(action: onDismiss) {
                         Image(systemName: "xmark")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.white.opacity(0.5))
                             .padding(6)
-                            .background(Color(.systemGray5), in: Circle())
+                            .background(.white.opacity(0.05), in: Circle())
                     }
                 }
 
-                Text(pair.name)
-                    .font(.system(size: 17, weight: .bold))
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(pair.name)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
 
-                Text(pair.description)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            // Primary pill
+                            Text("\((pair.primaryWeight * 100).safeInt())% \(pair.primaryAsset.ticker)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.7))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(.white.opacity(0.05))
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(.white.opacity(0.08), lineWidth: 1))
+
+                            // Hedge pill
+                            Text("+\((pair.hedgeWeight * 100).safeInt())% \(pair.hedgeAsset.ticker)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Color.teal)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.teal.opacity(0.1))
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(Color.teal.opacity(0.2), lineWidth: 1))
+                        }
+                    }
+
+                    Spacer()
+
+                    // Aura Boost
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("AURA BOOST")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.4))
+                            .tracking(0.8)
+                        Text(pair.expectedReturn.safeSignedPercentString())
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.purple.opacity(0.9))
+                    }
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)
+            .padding(.bottom, 12)
 
             AllocationBar(
                 primaryTicker: pair.primaryAsset.ticker,
@@ -164,63 +263,55 @@ struct SmartPairCard: View {
                 hedgeWeight: pair.hedgeWeight.safeValue()
             )
             .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.bottom, 12)
 
+            // Stats row
             HStack(spacing: 0) {
                 let safeReturn = pair.expectedReturn.safeValue()
-                PairStat(
-                    label: "Expected Return",
-                    value: safeReturn.safeSignedPercentString(),
-                    valueColor: safeReturn >= 0 ? Color("AccentGreen") : .red
-                )
-                Divider().frame(height: 40)
-                PairStat(
-                    label: "95% VaR",
-                    value: pair.simulatedVaR95.safePercentString(),
-                    valueColor: .orange
-                )
-                Divider().frame(height: 40)
-                PairStat(
-                    label: "Hedge Ratio",
-                    value: "\((pair.hedgeWeight * 100).safeInt())%",
-                    valueColor: .primary
-                )
+                PairStat(label: "Expected Return", value: safeReturn.safeSignedPercentString(),
+                         valueColor: safeReturn >= 0 ? Color.teal : .red)
+                Divider().frame(height: 36).overlay(Color.white.opacity(0.1))
+                PairStat(label: "95% VaR", value: pair.simulatedVaR95.safePercentString(), valueColor: .orange)
+                Divider().frame(height: 36).overlay(Color.white.opacity(0.1))
+                PairStat(label: "Hedge Ratio", value: "\((pair.hedgeWeight * 100).safeInt())%", valueColor: .white.opacity(0.8))
             }
-            .padding(.top, 12)
+            .padding(.bottom, 4)
 
+            // Action buttons
             HStack(spacing: 10) {
                 Button(action: onSimulate) {
                     HStack(spacing: 6) {
                         if isSimulating {
-                            ProgressView().scaleEffect(0.7)
+                            ProgressView().scaleEffect(0.7).tint(.white)
                         } else {
-                            Image(systemName: "waveform.path.ecg")
+                            Image(systemName: "eye")
+                                .font(.system(size: 13))
                         }
-                        Text("Simulate Pair")
+                        Text("Preview")
                             .font(.system(size: 14, weight: .medium))
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 42)
-                    .foregroundStyle(.primary)
-                    .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
+                    .frame(height: 44)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .background(.white.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(.white.opacity(0.08), lineWidth: 1))
                 }
                 .disabled(isSimulating)
 
                 Button(action: onExecute) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "bolt.fill")
-                        Text("Execute")
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 42)
-                    .foregroundStyle(.black)
-                    .background(Color("AccentGreen"), in: RoundedRectangle(cornerRadius: 10))
+                    Text("Execute")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .foregroundStyle(Color(red: 0.039, green: 0.027, blue: 0.063))
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
                 }
             }
             .padding(16)
         }
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+        .glassCard(cornerRadius: 32)
         .padding(.horizontal, 16)
     }
 }
@@ -240,20 +331,19 @@ private struct AllocationBar: View {
                 let hw = hedgeWeight.safeValue(fallback: 0)
                 HStack(spacing: 2) {
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color("AccentGreen"))
+                        .fill(Color.teal.opacity(0.8))
                         .frame(width: geo.size.width * max(0, min(pw, 1.0)))
-
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.orange.opacity(0.7))
+                        .fill(Color.orange.opacity(0.6))
                         .frame(width: geo.size.width * max(0, min(hw, 1.0)))
                 }
             }
-            .frame(height: 10)
+            .frame(height: 8)
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
             HStack {
                 Label("\((primaryWeight * 100).safeInt())% \(primaryTicker)", systemImage: "square.fill")
-                    .foregroundStyle(Color("AccentGreen"))
+                    .foregroundStyle(Color.teal)
                     .font(.caption)
                 Spacer()
                 Label("\((hedgeWeight * 100).safeInt())% \(hedgeTicker)", systemImage: "square.fill")
@@ -269,16 +359,16 @@ private struct AllocationBar: View {
 private struct PairStat: View {
     let label: String
     let value: String
-    var valueColor: Color = .primary
+    var valueColor: Color = .white
 
     var body: some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(valueColor)
             Text(label)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.4))
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -303,10 +393,10 @@ private struct HedgeTypeBadge: View {
     var badgeColor: Color {
         switch hedgeType {
         case .inverseETF: return .orange
-        case .putOption:  return .purple
+        case .putOption:  return Color.purple
         case .bond:       return .blue
         case .cash:       return .gray
-        case .commodity:  return Color("AccentGreen")
+        case .commodity:  return Color.teal
         }
     }
 }
@@ -321,16 +411,16 @@ private struct OptimisationLoadingView: View {
         VStack(spacing: 20) {
             ProgressView()
                 .scaleEffect(1.5)
-                .tint(Color("AccentGreen"))
+                .tint(Color.teal)
 
             Text("Running 10,000 simulations\(dots)")
                 .font(.system(size: 15))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.6))
                 .monospacedDigit()
 
             Text("Optimising hedge ratios to satisfy your 95% VaR constraint")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.white.opacity(0.4))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
         }
@@ -350,9 +440,10 @@ private struct NoPairsView: View {
                 .foregroundStyle(.orange)
             Text("No pairs satisfy your constraint")
                 .font(.headline)
+                .foregroundStyle(.white.opacity(0.8))
             Text("Try increasing your maximum loss limit, or adjusting your time horizon.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.4))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
         }
@@ -367,41 +458,64 @@ struct ExecuteConfirmationSheet: View {
     @Environment(\.dismiss) var dismiss
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 52))
-                    .foregroundStyle(Color("AccentGreen"))
+        ZStack {
+            Color(red: 0.039, green: 0.027, blue: 0.063).ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                Spacer()
+
+                // Glowing check icon
+                ZStack {
+                    Ellipse()
+                        .fill(Color.teal.opacity(0.25))
+                        .blur(radius: 30)
+                        .frame(width: 100, height: 100)
+                    Circle()
+                        .fill(.white.opacity(0.05))
+                        .overlay(Circle().stroke(.white.opacity(0.15), lineWidth: 1))
+                        .frame(width: 64, height: 64)
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(Color.teal)
+                }
 
                 Text(pair.name)
-                    .font(.title2.bold())
+                    .font(.system(size: 22, weight: .light))
+                    .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
 
-                Text(pair.formattedWeights)
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
+                // Weights pill
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.purple)
+                    Text(pair.formattedWeights)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.white.opacity(0.05))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(.white.opacity(0.1), lineWidth: 1))
 
                 Text("Brokerage integration would execute here.\nThis prototype shows the recommendation flow.")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.4))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
 
-                Button("Done") { dismiss() }
+                Spacer()
+
+                Button("Return to Dashboard") { dismiss() }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .foregroundStyle(.black)
-                    .background(Color("AccentGreen"))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .frame(height: 56)
+                    .foregroundStyle(Color(red: 0.039, green: 0.027, blue: 0.063))
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 28))
                     .padding(.horizontal, 24)
-            }
-            .padding(.top, 40)
-            .navigationTitle("Execute Trade")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") { dismiss() }
-                }
+
+                Spacer(minLength: 24)
             }
         }
     }

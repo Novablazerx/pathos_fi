@@ -5,7 +5,7 @@ import Combine
 class RiskAssessmentViewModel: ObservableObject {
     @Published var capitalInput: String = "10000"
     @Published var capitalRaw: Double = 10_000
-    @Published var selectedHorizon: TimeHorizon = .sixMonths
+    var selectedHorizon: TimeHorizon = .oneYear
     @Published var maxLossPercent: Double = 15.0
 
     var formattedCapital: String {
