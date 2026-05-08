@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import Charts
 
 struct DashboardView: View {
@@ -508,4 +509,10 @@ extension PieSliceColor {
         case .tailRisk:   return Color.pink
         }
     }
+}
+
+#Preview {
+    DashboardView()
+        .environmentObject(AppState())
+        .modelContainer(for: [UserRiskProfile.self, SmartPair.self, UserInteraction.self], inMemory: true)
 }

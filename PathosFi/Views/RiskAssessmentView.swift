@@ -313,3 +313,8 @@ extension View {
         modifier(GlassCard(cornerRadius: cornerRadius))
     }
 }
+
+#Preview {
+    RiskAssessmentView()
+        .environmentObject(AppState())
+}

@@ -95,47 +95,56 @@ struct ActionableView: View {
 private struct ActionableHeaderView: View {
     let onBack: () -> Void
 
-    var body: some View {
-        HStack(alignment: .center) {
-            Button(action: onBack) {
-                ZStack {
-                    Circle()
-                        .fill(Color(white: 0.12))
-                        .overlay(Circle().stroke(.white.opacity(0.1), lineWidth: 1))
-                        .frame(width: 42, height: 42)
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("OPTIMIZATION")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Color.purple.opacity(0.8))
-                    .tracking(2)
-                Text("AI Hedges")
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+    private var backButton: some View {
+        Button(action: onBack) {
+            ZStack {
+                Circle()
+                    .fill(Color(white: 0.12))
+                    .overlay(Circle().stroke(.white.opacity(0.1), lineWidth: 1))
+                    .frame(width: 42, height: 42)
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
             }
-            .padding(.leading, 12)
+        }
+    }
 
+    private var titleSection: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("OPTIMIZATION")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Color.purple.opacity(0.8))
+                .tracking(2)
+            Text("AI Hedges")
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+        }
+        .padding(.leading, 12)
+    }
+
+    private var liveBadge: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "waveform.path.ecg")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.teal)
+            Text("LIVE")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color.teal)
+                .tracking(1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color(white: 0.10))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(Color.teal.opacity(0.5), lineWidth: 1))
+    }
+
+    var body: some View {
+        HStack(alignment: .center) {
+            backButton
+            titleSection
             Spacer()
-
-            HStack(spacing: 6) {
-                Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.teal)
-                Text("LIVE")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color.teal)
-                    .tracking(1)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Color(white: 0.10))
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(Color.teal.opacity(0.5), lineWidth: 1))
+            liveBadge
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
@@ -233,69 +242,122 @@ struct SmartPairCard: View {
     let onExecute: () -> Void
     let onDismiss: () -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-
-            // Header
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    HedgeTypeBadge(hedgeType: pair.hedgeType)
-                    Spacer()
-                    Button(action: onDismiss) {
-                        Image(systemName: "xmark")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.5))
-                            .padding(6)
-                            .background(.white.opacity(0.05), in: Circle())
-                    }
-                }
-
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(pair.name)
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-
-                        HStack(spacing: 8) {
-                            // Primary pill
-                            Text("\((pair.primaryWeight * 100).safeInt())% \(pair.primaryAsset.ticker)")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.7))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(.white.opacity(0.05))
-                                .clipShape(Capsule())
-                                .overlay(Capsule().stroke(.white.opacity(0.08), lineWidth: 1))
-
-                            // Hedge pill
-                            Text("+\((pair.hedgeWeight * 100).safeInt())% \(pair.hedgeAsset.ticker)")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(Color.teal)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Color.teal.opacity(0.1))
-                                .clipShape(Capsule())
-                                .overlay(Capsule().stroke(Color.teal.opacity(0.2), lineWidth: 1))
-                        }
-                    }
-
-                    Spacer()
-
-                    // Aura Boost
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("AURA BOOST")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.4))
-                            .tracking(0.8)
-                        Text(pair.expectedReturn.safeSignedPercentString())
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(Color.purple.opacity(0.9))
-                    }
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                HedgeTypeBadge(hedgeType: pair.hedgeType)
+                Spacer()
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.5))
+                        .padding(6)
+                        .background(.white.opacity(0.05), in: Circle())
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 12)
+
+            HStack(alignment: .top) {
+                pairInfo
+                Spacer()
+                auraBoost
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
+    }
+
+    private var pairInfo: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(pair.name)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+
+            HStack(spacing: 8) {
+                Text("\((pair.primaryWeight * 100).safeInt())% \(pair.primaryAsset.ticker)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.white.opacity(0.05))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(.white.opacity(0.08), lineWidth: 1))
+
+                Text("+\((pair.hedgeWeight * 100).safeInt())% \(pair.hedgeAsset.ticker)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.teal)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.teal.opacity(0.1))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.teal.opacity(0.2), lineWidth: 1))
+            }
+        }
+    }
+
+    private var auraBoost: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text("AURA BOOST")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(.white.opacity(0.4))
+                .tracking(0.8)
+            Text(pair.expectedReturn.safeSignedPercentString())
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.purple.opacity(0.9))
+        }
+    }
+
+    private var statsRow: some View {
+        HStack(spacing: 0) {
+            let safeReturn = pair.expectedReturn.safeValue()
+            PairStat(label: "Expected Return", value: safeReturn.safeSignedPercentString(),
+                     valueColor: safeReturn >= 0 ? Color.teal : .red)
+            Divider().frame(height: 36).overlay(Color.white.opacity(0.1))
+            PairStat(label: "95% VaR", value: pair.simulatedVaR95.safePercentString(), valueColor: .orange)
+            Divider().frame(height: 36).overlay(Color.white.opacity(0.1))
+            PairStat(label: "Hedge Ratio", value: "\((pair.hedgeWeight * 100).safeInt())%", valueColor: .white.opacity(0.8))
+        }
+        .padding(.bottom, 4)
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 10) {
+            Button(action: onSimulate) {
+                HStack(spacing: 6) {
+                    if isSimulating {
+                        ProgressView().scaleEffect(0.7).tint(.white)
+                    } else {
+                        Image(systemName: "eye")
+                            .font(.system(size: 13))
+                    }
+                    Text("Preview")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .foregroundStyle(.white.opacity(0.85))
+                .background(.white.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(.white.opacity(0.08), lineWidth: 1))
+            }
+            .disabled(isSimulating)
+
+            Button(action: onExecute) {
+                Text("Execute")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .foregroundStyle(Color(red: 0.039, green: 0.027, blue: 0.063))
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+            }
+        }
+        .padding(16)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            headerSection
 
             AllocationBar(
                 primaryTicker: pair.primaryAsset.ticker,
@@ -306,51 +368,8 @@ struct SmartPairCard: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
 
-            // Stats row
-            HStack(spacing: 0) {
-                let safeReturn = pair.expectedReturn.safeValue()
-                PairStat(label: "Expected Return", value: safeReturn.safeSignedPercentString(),
-                         valueColor: safeReturn >= 0 ? Color.teal : .red)
-                Divider().frame(height: 36).overlay(Color.white.opacity(0.1))
-                PairStat(label: "95% VaR", value: pair.simulatedVaR95.safePercentString(), valueColor: .orange)
-                Divider().frame(height: 36).overlay(Color.white.opacity(0.1))
-                PairStat(label: "Hedge Ratio", value: "\((pair.hedgeWeight * 100).safeInt())%", valueColor: .white.opacity(0.8))
-            }
-            .padding(.bottom, 4)
-
-            // Action buttons
-            HStack(spacing: 10) {
-                Button(action: onSimulate) {
-                    HStack(spacing: 6) {
-                        if isSimulating {
-                            ProgressView().scaleEffect(0.7).tint(.white)
-                        } else {
-                            Image(systemName: "eye")
-                                .font(.system(size: 13))
-                        }
-                        Text("Preview")
-                            .font(.system(size: 14, weight: .medium))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .foregroundStyle(.white.opacity(0.85))
-                    .background(.white.opacity(0.05))
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(.white.opacity(0.08), lineWidth: 1))
-                }
-                .disabled(isSimulating)
-
-                Button(action: onExecute) {
-                    Text("Execute")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .foregroundStyle(Color(red: 0.039, green: 0.027, blue: 0.063))
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                }
-            }
-            .padding(16)
+            statsRow
+            actionButtons
         }
         .glassCard(cornerRadius: 32)
         .padding(.horizontal, 16)
@@ -560,4 +579,10 @@ struct ExecuteConfirmationSheet: View {
             }
         }
     }
+}
+
+#Preview {
+    ActionableView()
+        .environmentObject(AppState())
+        .modelContainer(for: [UserRiskProfile.self, SmartPair.self, UserInteraction.self], inMemory: true)
 }

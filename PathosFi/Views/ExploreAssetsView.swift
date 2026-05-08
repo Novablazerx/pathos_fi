@@ -305,3 +305,8 @@ private struct AssetMarketplaceRow: View {
         .glassCard(cornerRadius: 20)
     }
 }
+
+#Preview {
+    ExploreAssetsView()
+        .environmentObject(AppState())
+}

@@ -921,3 +921,16 @@ struct OptionTradeModal: View {
         }
     }
 }
+
+#Preview {
+    AssetDetailsView(
+        asset: AssetInfo(
+            ticker: "SPY",
+            name: "S&P 500 ETF",
+            annualReturn: 0.10,
+            annualVolatility: 0.15,
+            category: .equity
+        )
+    )
+    .environmentObject(AppState())
+}

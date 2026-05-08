@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
     @StateObject private var appState = AppState()
@@ -22,4 +23,9 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.4), value: appState.currentScreen)
     }
+}
+
+#Preview {
+    ContentView()
+        .modelContainer(for: [UserRiskProfile.self, SmartPair.self, UserInteraction.self], inMemory: true)
 }
