@@ -166,8 +166,22 @@ private struct AssetPriceChart: View {
     let projected:  [PriceDataPoint]
     let currentPrice: Double
 
+    @State private var selectedMonthOffset: Double? = nil
+
     private var allPrices: [Double] {
         (historical.map(\.price) + projected.map(\.price))
+    }
+
+    private func interpolatedPrice(at offset: Double) -> Double? {
+        let all = (historical + projected).sorted { $0.monthOffset < $1.monthOffset }
+        guard all.count >= 2 else { return nil }
+        guard let lo = all.last(where: { Double($0.monthOffset) <= offset }),
+              let hi = all.first(where: { Double($0.monthOffset) >= offset }) else {
+            return all.first?.price
+        }
+        guard lo.monthOffset != hi.monthOffset else { return lo.price }
+        let t = (offset - Double(lo.monthOffset)) / Double(hi.monthOffset - lo.monthOffset)
+        return lo.price + t * (hi.price - lo.price)
     }
 
     var body: some View {
@@ -254,6 +268,33 @@ private struct AssetPriceChart: View {
                                 .font(.system(size: 9))
                                 .foregroundStyle(.white.opacity(0.3))
                         }
+                    }
+                }
+            }
+            .chartXSelection(value: $selectedMonthOffset)
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    let plot = geo[proxy.plotAreaFrame]
+                    if let offset = selectedMonthOffset,
+                       let xPos  = proxy.position(forX: offset),
+                       let price = interpolatedPrice(at: offset) {
+                        let xScreen = plot.minX + xPos
+                        Rectangle()
+                            .fill(.white.opacity(0.2))
+                            .frame(width: 1, height: plot.height)
+                            .position(x: xScreen, y: plot.midY)
+                        Text("$\(Int(price.rounded()))")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.teal.opacity(0.85))
+                            .clipShape(Capsule())
+                            .shadow(color: .black.opacity(0.3), radius: 4)
+                            .position(
+                                x: min(max(xScreen, 30), plot.maxX - 30),
+                                y: plot.minY + 18
+                            )
                     }
                 }
             }

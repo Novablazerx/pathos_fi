@@ -21,7 +21,7 @@ struct DashboardView: View {
 
                         // MARK: Projected Value (full-width bento)
                         ProjectedValueCard(
-                            capital: appState.riskProfile.startingCapital,
+                            capital: appState.portfolioValue,
                             simulationResult: viewModel.simulationResult
                         )
 
@@ -29,7 +29,7 @@ struct DashboardView: View {
                         ProbabilityPieCard(
                             result: viewModel.simulationResult,
                             isLoading: viewModel.isSimulating,
-                            capital: appState.riskProfile.startingCapital,
+                            capital: appState.portfolioValue,
                             maxLossPercent: appState.riskProfile.maxLossPercent
                         )
 
@@ -61,8 +61,8 @@ struct DashboardView: View {
 
                         // MARK: Currently Held Assets
                         HeldAssetsSection(
-                            holdings: viewModel.heldAssets.filter { $0.asset.category != .option },
-                            optionsByTicker: viewModel.optionsByTicker
+                            holdings: appState.holdings.filter { $0.asset.category != .option },
+                            optionsByTicker: appState.optionsByTicker
                         )
 
                         // MARK: Explore Assets CTA
