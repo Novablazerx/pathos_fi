@@ -19,6 +19,14 @@ struct ExploreAssetsView: View {
         }
     }
 
+    private var groupedAssets: [(category: AssetCategory, assets: [AssetInfo])] {
+        let order: [AssetCategory] = [.equity, .bond, .commodity, .inverseEquity, .option]
+        return order.compactMap { cat in
+            let assets = filteredAssets.filter { $0.category == cat }
+            return assets.isEmpty ? nil : (cat, assets)
+        }
+    }
+
     var body: some View {
         ZStack {
             AuraBackground()
@@ -32,20 +40,27 @@ struct ExploreAssetsView: View {
                 CategoryFilterBar(selected: $selectedCategory)
                     .padding(.bottom, 8)
 
-                if !searchText.isEmpty || true {
-                    SearchBarView(text: $searchText)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
-                }
+                SearchBarView(text: $searchText)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
 
                 ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(filteredAssets) { asset in
-                            AssetMarketplaceRow(asset: asset)
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        ForEach(groupedAssets, id: \.category) { group in
+                            Section {
+                                VStack(spacing: 10) {
+                                    ForEach(group.assets) { asset in
+                                        AssetMarketplaceRow(asset: asset)
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, 16)
+                            } header: {
+                                AssetSectionHeader(category: group.category, count: group.assets.count)
+                            }
                         }
+                        Spacer(minLength: 40)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 40)
                 }
             }
         }
@@ -96,6 +111,55 @@ private struct ExploreHeaderView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
+    }
+}
+
+// MARK: - Section Header
+
+private struct AssetSectionHeader: View {
+    let category: AssetCategory
+    let count: Int
+
+    private var accentColor: Color {
+        switch category {
+        case .equity:        return Color.teal
+        case .bond:          return Color.purple
+        case .commodity:     return Color.orange
+        case .inverseEquity: return Color.pink
+        case .option:        return Color.indigo
+        }
+    }
+
+    private var icon: String {
+        switch category {
+        case .equity:        return "chart.line.uptrend.xyaxis"
+        case .bond:          return "building.columns"
+        case .commodity:     return "cube.fill"
+        case .inverseEquity: return "arrow.down.right"
+        case .option:        return "doc.plaintext"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(accentColor)
+            Text(category.rawValue.uppercased())
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(accentColor)
+                .tracking(1.5)
+            Spacer()
+            Text("\(count)")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(accentColor.opacity(0.6))
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
+        .background(
+            Color(red: 0.039, green: 0.027, blue: 0.063).opacity(0.95)
+                .background(.ultraThinMaterial)
+        )
     }
 }
 

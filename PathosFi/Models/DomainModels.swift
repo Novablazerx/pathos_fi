@@ -48,7 +48,7 @@ struct AssetInfo: Identifiable {
     let category: AssetCategory
 }
 
-enum AssetCategory: String {
+enum AssetCategory: String, CaseIterable, Hashable {
     case equity        = "Equity"
     case inverseEquity = "Inverse Equity"
     case bond          = "Bond"
@@ -84,6 +84,26 @@ struct HeldAsset: Identifiable {
     let currentPrice: Double
     var value: Double { shares * currentPrice }
     var gainPct: Double { (currentPrice - avgCost) / avgCost * 100 }
+}
+
+// MARK: - Options Contracts
+
+enum OptionType: String {
+    case call = "Call"
+    case put  = "Put"
+}
+
+struct OptionsContract: Identifiable {
+    let id = UUID()
+    let underlyingTicker: String
+    let type: OptionType
+    let strikePrice: Double
+    let expiryDate: Date
+    let contracts: Int
+    let costBasis: Double    // premium paid per share
+    let currentValue: Double // current premium per share
+    var pnlPct: Double { (currentValue - costBasis) / costBasis * 100 }
+    var totalValue: Double { currentValue * Double(contracts) * 100 }
 }
 
 // MARK: - RLHF Preference Model

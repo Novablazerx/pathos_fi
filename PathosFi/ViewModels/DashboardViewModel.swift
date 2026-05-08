@@ -15,6 +15,21 @@ class DashboardViewModel: ObservableObject {
         ]
     }()
 
+    let optionsByTicker: [String: [OptionsContract]] = {
+        let cal = Calendar.current
+        let now = Date()
+        func expiry(months: Int) -> Date { cal.date(byAdding: .month, value: months, to: now) ?? now }
+        return [
+            "SPY": [
+                OptionsContract(underlyingTicker: "SPY", type: .put,  strikePrice: 440, expiryDate: expiry(months: 3),  contracts: 1, costBasis: 8.50,  currentValue: 11.20),
+                OptionsContract(underlyingTicker: "SPY", type: .call, strikePrice: 475, expiryDate: expiry(months: 6),  contracts: 2, costBasis: 6.30,  currentValue: 4.80),
+            ],
+            "QQQ": [
+                OptionsContract(underlyingTicker: "QQQ", type: .put,  strikePrice: 360, expiryDate: expiry(months: 2),  contracts: 1, costBasis: 7.20,  currentValue: 9.40),
+            ],
+        ]
+    }()
+
     private let apiClient = BackendAPIClient()
 
     func runSimulation(profile: RiskProfileInput) async {

@@ -60,7 +60,10 @@ struct DashboardView: View {
                         .padding(.horizontal, 16)
 
                         // MARK: Currently Held Assets
-                        HeldAssetsSection(holdings: viewModel.heldAssets)
+                        HeldAssetsSection(
+                            holdings: viewModel.heldAssets.filter { $0.asset.category != .option },
+                            optionsByTicker: viewModel.optionsByTicker
+                        )
 
                         // MARK: Explore Assets CTA
                         Button {
@@ -379,6 +382,9 @@ struct BentoStatCard: View {
 
 private struct HeldAssetsSection: View {
     let holdings: [HeldAsset]
+    let optionsByTicker: [String: [OptionsContract]]
+
+    @State private var selectedHolding: HeldAsset?
 
     private let fmt: NumberFormatter = {
         let f = NumberFormatter()
@@ -417,13 +423,25 @@ private struct HeldAssetsSection: View {
 
             VStack(spacing: 10) {
                 ForEach(holdings) { holding in
-                    HeldAssetRow(holding: holding, accentColor: categoryColor(holding.asset.category), fmt: fmt)
+                    HeldAssetRow(
+                        holding: holding,
+                        accentColor: categoryColor(holding.asset.category),
+                        fmt: fmt
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { selectedHolding = holding }
                 }
             }
         }
         .padding(20)
         .glassCard(cornerRadius: 28)
         .padding(.horizontal, 16)
+        .fullScreenCover(item: $selectedHolding) { holding in
+            AssetDetailsView(
+                holding: holding,
+                options: optionsByTicker[holding.asset.ticker] ?? []
+            )
+        }
     }
 }
 
@@ -465,6 +483,10 @@ private struct HeldAssetRow: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(gain >= 0 ? Color.teal : Color.pink)
             }
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.25))
         }
     }
 }
