@@ -28,7 +28,9 @@ struct DashboardView: View {
                         // MARK: Outcome Paths pie chart
                         ProbabilityPieCard(
                             result: viewModel.simulationResult,
-                            isLoading: viewModel.isSimulating
+                            isLoading: viewModel.isSimulating,
+                            capital: appState.riskProfile.startingCapital,
+                            maxLossPercent: appState.riskProfile.maxLossPercent
                         )
 
                         // MARK: Bento stat grid
@@ -191,6 +193,23 @@ struct ProbabilityPieCard: View {
     let result: SimulationResult?
     var isLoading: Bool = false
     var isGhost: Bool = false
+    var capital: Double = 0
+    var maxLossPercent: Double = 0
+
+    private func dollarRange(for color: PieSliceColor) -> String? {
+        guard capital > 0 else { return nil }
+        let floor = capital * (1 - maxLossPercent / 100)
+        let projected = capital * (1 + (result?.expectedReturn.safeValue() ?? 8.0) / 100)
+        let fmt = NumberFormatter()
+        fmt.numberStyle = .currency
+        fmt.maximumFractionDigits = 0
+        func f(_ v: Double) -> String { fmt.string(from: NSNumber(value: v)) ?? "" }
+        switch color {
+        case .upside:     return "\(f(capital)) – \(f(projected))"
+        case .acceptable: return "\(f(floor)) – \(f(capital))"
+        case .tailRisk:   return "Below \(f(floor))"
+        }
+    }
 
     var slices: [PieSlice] {
         guard let r = result else {
@@ -248,7 +267,7 @@ struct ProbabilityPieCard: View {
 
             VStack(spacing: 8) {
                 ForEach(slices) { slice in
-                    PieLegendRow(slice: slice)
+                    PieLegendRow(slice: slice, rangeLabel: dollarRange(for: slice.color))
                 }
             }
         }
@@ -261,15 +280,23 @@ struct ProbabilityPieCard: View {
 
 private struct PieLegendRow: View {
     let slice: PieSlice
+    var rangeLabel: String? = nil
 
     var body: some View {
         HStack(spacing: 10) {
             RoundedRectangle(cornerRadius: 3)
                 .fill(slice.color.color)
                 .frame(width: 10, height: 10)
-            Text(slice.label)
-                .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.6))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(slice.label)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.6))
+                if let range = rangeLabel {
+                    Text(range)
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+            }
             Spacer()
             Text(slice.percent.safePercentString())
                 .font(.system(size: 14, weight: .semibold, design: .rounded))

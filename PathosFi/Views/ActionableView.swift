@@ -33,8 +33,13 @@ struct ActionableView: View {
                             }
 
                             if let ghostResult = viewModel.ghostSimulationResult {
-                                ProbabilityPieCard(result: ghostResult, isGhost: true)
-                                    .transition(.scale(scale: 0.95).combined(with: .opacity))
+                                ProbabilityPieCard(
+                                    result: ghostResult,
+                                    isGhost: true,
+                                    capital: appState.riskProfile.startingCapital,
+                                    maxLossPercent: appState.riskProfile.maxLossPercent
+                                )
+                                .transition(.scale(scale: 0.95).combined(with: .opacity))
                             }
 
                             ForEach(viewModel.smartPairs) { pair in
