@@ -6,6 +6,15 @@ class DashboardViewModel: ObservableObject {
     @Published var simulationResult: SimulationResult? = nil
     @Published var isSimulating: Bool = false
 
+    let heldAssets: [HeldAsset] = {
+        let lib = OptimisationEngine.assetLibrary
+        return [
+            HeldAsset(asset: lib["SPY"]!,  shares: 5,  avgCost: 420, currentPrice: 456),
+            HeldAsset(asset: lib["QQQ"]!,  shares: 3,  avgCost: 340, currentPrice: 382),
+            HeldAsset(asset: lib["GLD"]!,  shares: 10, avgCost: 185, currentPrice: 192),
+        ]
+    }()
+
     private let apiClient = BackendAPIClient()
 
     func runSimulation(profile: RiskProfileInput) async {

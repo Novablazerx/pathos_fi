@@ -5,6 +5,7 @@ enum AppScreen {
     case onboarding
     case dashboard
     case recommendations
+    case exploreAssets
 }
 
 class AppState: ObservableObject {
@@ -21,9 +22,13 @@ class AppState: ObservableObject {
         currentScreen = .recommendations
     }
 
+    func navigateToExploreAssets() {
+        currentScreen = .exploreAssets
+    }
+
     func navigateBack() {
         switch currentScreen {
-        case .recommendations:
+        case .recommendations, .exploreAssets:
             currentScreen = .dashboard
         case .dashboard:
             currentScreen = .onboarding

@@ -74,6 +74,18 @@ enum PieSliceColor {
     case tailRisk
 }
 
+// MARK: - Held Asset (Portfolio)
+
+struct HeldAsset: Identifiable {
+    let id = UUID()
+    let asset: AssetInfo
+    let shares: Double
+    let avgCost: Double
+    let currentPrice: Double
+    var value: Double { shares * currentPrice }
+    var gainPct: Double { (currentPrice - avgCost) / avgCost * 100 }
+}
+
 // MARK: - RLHF Preference Model
 
 struct UserPreferences {

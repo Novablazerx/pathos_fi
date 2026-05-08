@@ -58,6 +58,31 @@ struct DashboardView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 28))
                         }
                         .padding(.horizontal, 16)
+
+                        // MARK: Currently Held Assets
+                        HeldAssetsSection(holdings: viewModel.heldAssets)
+
+                        // MARK: Explore Assets CTA
+                        Button {
+                            appState.navigateToExploreAssets()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "square.grid.2x2")
+                                    .foregroundStyle(Color.teal)
+                                Text("Explore Assets")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Image(systemName: "arrow.right")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Color.teal)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .padding(.horizontal, 20)
+                            .glassCard(cornerRadius: 28)
+                        }
+                        .padding(.horizontal, 16)
                         .padding(.bottom, 30)
                     }
                     .padding(.top, 8)
@@ -347,6 +372,100 @@ struct BentoStatCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .glassCard(cornerRadius: 24)
+    }
+}
+
+// MARK: - Held Assets Section
+
+private struct HeldAssetsSection: View {
+    let holdings: [HeldAsset]
+
+    private let fmt: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.maximumFractionDigits = 0
+        return f
+    }()
+
+    private func categoryColor(_ category: AssetCategory) -> Color {
+        switch category {
+        case .equity:        return Color.teal
+        case .bond:          return Color.purple
+        case .commodity:     return Color.orange
+        case .inverseEquity: return Color.pink
+        case .option:        return Color.indigo
+        }
+    }
+
+    var totalValue: String {
+        let total = holdings.reduce(0) { $0 + $1.value }
+        return fmt.string(from: NSNumber(value: total)) ?? ""
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("PORTFOLIO HOLDINGS")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.teal.opacity(0.7))
+                    .tracking(1.5)
+                Spacer()
+                Text(totalValue)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+
+            VStack(spacing: 10) {
+                ForEach(holdings) { holding in
+                    HeldAssetRow(holding: holding, accentColor: categoryColor(holding.asset.category), fmt: fmt)
+                }
+            }
+        }
+        .padding(20)
+        .glassCard(cornerRadius: 28)
+        .padding(.horizontal, 16)
+    }
+}
+
+private struct HeldAssetRow: View {
+    let holding: HeldAsset
+    let accentColor: Color
+    let fmt: NumberFormatter
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(accentColor.opacity(0.25))
+                .overlay(Circle().stroke(accentColor.opacity(0.5), lineWidth: 1))
+                .frame(width: 36, height: 36)
+                .overlay(
+                    Text(holding.asset.ticker.prefix(3))
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(accentColor)
+                )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(holding.asset.ticker)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text(holding.asset.name)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(fmt.string(from: NSNumber(value: holding.value)) ?? "")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                let gain = holding.gainPct
+                Text("\(gain >= 0 ? "+" : "")\(String(format: "%.1f", gain))%")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(gain >= 0 ? Color.teal : Color.pink)
+            }
+        }
     }
 }
 

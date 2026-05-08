@@ -15,6 +15,9 @@ struct ContentView: View {
             case .recommendations:
                 ActionableView()
                     .environmentObject(appState)
+            case .exploreAssets:
+                ExploreAssetsView()
+                    .environmentObject(appState)
             }
         }
         .animation(.easeInOut(duration: 0.4), value: appState.currentScreen)
