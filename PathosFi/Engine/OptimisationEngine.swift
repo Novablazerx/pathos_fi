@@ -68,6 +68,15 @@ struct OptimisationEngine {
                           category: .inverseEquity),
     ]
 
+    /// Mock reference prices used when an asset is not yet in the user's portfolio.
+    static let referencePrices: [String: Double] = [
+        "QQQ": 382,  "SPY": 456,  "AAPL": 175,  "MSFT": 415,
+        "NVDA": 875, "AMZN": 185, "TSLA": 175,
+        "TLT": 90,   "AGG": 97,   "IEF": 94,
+        "GLD": 192,  "SLV": 22,   "USO": 75,
+        "SQQQ": 12,  "SH": 14,    "SPXU": 8,    "PUT_QQQ": 5,
+    ]
+
     /// Known correlations between asset pairs (ρ).
     static let correlationMatrix: [String: [String: Double]] = [
         "QQQ":  ["SQQQ": -0.99, "TLT": -0.25, "GLD": 0.05, "SPY": 0.93],

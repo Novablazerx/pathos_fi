@@ -4,6 +4,7 @@ struct ExploreAssetsView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedCategory: AssetCategory? = nil
     @State private var searchText = ""
+    @State private var selectedAsset: AssetInfo? = nil
 
     private let allAssets: [AssetInfo] = OptimisationEngine.assetLibrary
         .values
@@ -50,7 +51,10 @@ struct ExploreAssetsView: View {
                             Section {
                                 VStack(spacing: 10) {
                                     ForEach(group.assets) { asset in
-                                        AssetMarketplaceRow(asset: asset)
+                                        Button { selectedAsset = asset } label: {
+                                            AssetMarketplaceRow(asset: asset)
+                                        }
+                                        .buttonStyle(.plain)
                                     }
                                 }
                                 .padding(.horizontal, 16)
@@ -61,6 +65,13 @@ struct ExploreAssetsView: View {
                         }
                         Spacer(minLength: 40)
                     }
+                }
+                .fullScreenCover(item: $selectedAsset) { asset in
+                    AssetDetailsView(
+                        asset: asset,
+                        options: appState.optionsByTicker[asset.ticker] ?? []
+                    )
+                    .environmentObject(appState)
                 }
             }
         }

@@ -384,6 +384,7 @@ private struct HeldAssetsSection: View {
     let holdings: [HeldAsset]
     let optionsByTicker: [String: [OptionsContract]]
 
+    @EnvironmentObject var appState: AppState
     @State private var selectedHolding: HeldAsset?
 
     private let fmt: NumberFormatter = {
@@ -438,9 +439,10 @@ private struct HeldAssetsSection: View {
         .padding(.horizontal, 16)
         .fullScreenCover(item: $selectedHolding) { holding in
             AssetDetailsView(
-                holding: holding,
+                asset: holding.asset,
                 options: optionsByTicker[holding.asset.ticker] ?? []
             )
+            .environmentObject(appState)
         }
     }
 }
