@@ -10,9 +10,11 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                AuraBackground()
+        ZStack {
+            AuraBackground()
+
+            VStack(spacing: 0) {
+                DashboardHeaderView(onBack: { appState.navigateBack() })
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -59,31 +61,63 @@ struct DashboardView: View {
                     .padding(.top, 8)
                 }
             }
-            .navigationTitle("Portfolio Aura")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        appState.navigateBack()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .foregroundStyle(Color.teal)
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        Task { await viewModel.runSimulation(profile: appState.riskProfile) }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundStyle(Color.teal)
-                    }
-                    .disabled(viewModel.isSimulating)
-                }
-            }
         }
         .task {
             await viewModel.runSimulation(profile: appState.riskProfile)
         }
+    }
+}
+
+// MARK: - Dashboard Header
+
+private struct DashboardHeaderView: View {
+    let onBack: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center) {
+            Button(action: onBack) {
+                ZStack {
+                    Circle()
+                        .fill(Color(white: 0.12))
+                        .overlay(Circle().stroke(.white.opacity(0.1), lineWidth: 1))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("GOOD MORNING")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.teal.opacity(0.8))
+                    .tracking(2)
+                Text("Portfolio Aura")
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            .padding(.leading, 12)
+
+            Spacer()
+
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    Circle()
+                        .fill(Color(white: 0.12))
+                        .overlay(Circle().stroke(.white.opacity(0.1), lineWidth: 1))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: "hexagon")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(Color.teal)
+                }
+                Circle()
+                    .fill(Color.pink)
+                    .frame(width: 9, height: 9)
+                    .offset(x: 1, y: -1)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
     }
 }
 

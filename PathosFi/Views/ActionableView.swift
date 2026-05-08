@@ -12,9 +12,11 @@ struct ActionableView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                AuraBackground()
+        ZStack {
+            AuraBackground()
+
+            VStack(spacing: 0) {
+                ActionableHeaderView(onBack: { appState.navigateBack() })
 
                 if viewModel.isOptimising {
                     OptimisationLoadingView()
@@ -73,31 +75,65 @@ struct ActionableView: View {
                     .animation(.easeInOut, value: viewModel.simulatingPairId != nil)
                 }
             }
-            .navigationTitle("AI Hedges")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        appState.navigateBack()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .foregroundStyle(Color.teal)
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Label("\(appState.riskProfile.maxLossPercent.safeInt())% max loss",
-                          systemImage: "lock.shield.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .sheet(item: $viewModel.selectedPairForExecution) { pair in
-                ExecuteConfirmationSheet(pair: pair)
-            }
+        }
+        .sheet(item: $viewModel.selectedPairForExecution) { pair in
+            ExecuteConfirmationSheet(pair: pair)
         }
         .task {
             await viewModel.loadRecommendations(profile: appState.riskProfile)
         }
+    }
+}
+
+// MARK: - Actionable Header
+
+private struct ActionableHeaderView: View {
+    let onBack: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center) {
+            Button(action: onBack) {
+                ZStack {
+                    Circle()
+                        .fill(Color(white: 0.12))
+                        .overlay(Circle().stroke(.white.opacity(0.1), lineWidth: 1))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("OPTIMIZATION")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Color.purple.opacity(0.8))
+                    .tracking(2)
+                Text("AI Hedges")
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            .padding(.leading, 12)
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.teal)
+                Text("LIVE")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.teal)
+                    .tracking(1)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Color(white: 0.10))
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Color.teal.opacity(0.5), lineWidth: 1))
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
     }
 }
 
