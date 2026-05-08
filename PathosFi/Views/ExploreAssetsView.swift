@@ -67,11 +67,8 @@ struct ExploreAssetsView: View {
                     }
                 }
                 .fullScreenCover(item: $selectedAsset) { asset in
-                    AssetDetailsView(
-                        asset: asset,
-                        options: appState.optionsByTicker[asset.ticker] ?? []
-                    )
-                    .environmentObject(appState)
+                    AssetDetailsView(asset: asset)
+                        .environmentObject(appState)
                 }
             }
         }

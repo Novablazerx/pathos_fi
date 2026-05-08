@@ -438,11 +438,8 @@ private struct HeldAssetsSection: View {
         .glassCard(cornerRadius: 28)
         .padding(.horizontal, 16)
         .fullScreenCover(item: $selectedHolding) { holding in
-            AssetDetailsView(
-                asset: holding.asset,
-                options: optionsByTicker[holding.asset.ticker] ?? []
-            )
-            .environmentObject(appState)
+            AssetDetailsView(asset: holding.asset)
+                .environmentObject(appState)
         }
     }
 }

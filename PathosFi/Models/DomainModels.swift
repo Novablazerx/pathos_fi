@@ -106,6 +106,17 @@ struct OptionsContract: Identifiable {
     var totalValue: Double { currentValue * Double(contracts) * 100 }
 }
 
+// MARK: - Available Option (for display in the options chain; not yet purchased)
+
+struct AvailableOption: Identifiable {
+    let id = UUID()
+    let type: OptionType
+    let strikePrice: Double
+    let expiryDate: Date
+    let premium: Double      // per share (contract = 100 shares)
+    let daysToExpiry: Int    // used for maturity filter grouping
+}
+
 // MARK: - RLHF Preference Model
 
 struct UserPreferences {

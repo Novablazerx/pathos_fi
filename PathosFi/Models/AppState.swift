@@ -38,7 +38,11 @@ class AppState: ObservableObject {
         ]
     }()
 
-    var portfolioValue: Double { holdings.reduce(0) { $0 + $1.value } }
+    var portfolioValue: Double {
+        let equity  = holdings.reduce(0.0) { $0 + $1.value }
+        let options = optionsByTicker.values.flatMap { $0 }.reduce(0.0) { $0 + $1.totalValue }
+        return equity + options
+    }
 
     func navigateToDashboard() {
         currentScreen = .dashboard
