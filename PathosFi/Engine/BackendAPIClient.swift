@@ -12,7 +12,7 @@ actor BackendAPIClient {
 
     init(baseURL: URL? = nil) {
         self.baseURL = baseURL
-            ?? URL(string: "https://api.pathosfi.com/v1")
+            ?? URL(string: "http://127.0.0.1:8000/v1")
             ?? URL(fileURLWithPath: "/") // static URL string is valid; fallback silences compiler only
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
@@ -77,6 +77,63 @@ actor BackendAPIClient {
             throw APIError.networkFailure
         }
         return try JSONDecoder().decode(PutHedgeResponse.self, from: data)
+    }
+
+    // MARK: - Portfolio Simulation
+
+    struct AssetPosition: Codable {
+        let ticker: String
+        let type: String        // "equity" or "option"
+        let shares: Double?
+        let contract: String?   // "call" or "put"
+        let strike: Double?
+        let expiry: String?     // ISO-8601 date, e.g. "2026-06-19"
+        let quantity: Int?
+    }
+
+    struct PortfolioSimRequest: Codable {
+        let portfolioId: String
+        let horizonDays: Int    // clamped to 1-252 before sending
+        let assets: [AssetPosition]
+
+        enum CodingKeys: String, CodingKey {
+            case portfolioId  = "portfolio_id"
+            case horizonDays  = "horizon_days"
+            case assets
+        }
+    }
+
+    struct HistogramData: Codable {
+        let bins: [Double]
+        let probabilities: [Double]
+    }
+
+    struct PortfolioSimResponse: Codable {
+        let portfolioId: String
+        let currentValue: Double
+        let expectedMeanValueT30: Double
+        let valueAtRisk95: Double
+        let expectedShortfall95: Double
+        let distributionHistogram: HistogramData
+        let bnnModelUsed: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case portfolioId           = "portfolio_id"
+            case currentValue          = "current_value"
+            case expectedMeanValueT30  = "expected_mean_value_t30"
+            case valueAtRisk95         = "value_at_risk_95"
+            case expectedShortfall95   = "expected_shortfall_95"
+            case distributionHistogram = "distribution_histogram"
+            case bnnModelUsed          = "bnn_model_used"
+        }
+    }
+
+    /// POST /v1/portfolio/simulate — runs 10 000-path Monte Carlo + BNN drift/vol on the backend.
+    func fetchPortfolioSimulation(request: PortfolioSimRequest) async throws -> PortfolioSimResponse {
+        guard let data = try? await post(endpoint: "portfolio/simulate", body: request) else {
+            throw APIError.networkFailure
+        }
+        return try JSONDecoder().decode(PortfolioSimResponse.self, from: data)
     }
 
     // MARK: - RLHF Sync
