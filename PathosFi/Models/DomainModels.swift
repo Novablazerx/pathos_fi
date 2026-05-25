@@ -95,6 +95,7 @@ enum OptionType: String {
 
 struct OptionsContract: Identifiable {
     let id = UUID()
+    let optionId: Int?
     let underlyingTicker: String
     let type: OptionType
     let strikePrice: Double
@@ -104,12 +105,31 @@ struct OptionsContract: Identifiable {
     let currentValue: Double // current premium per share
     var pnlPct: Double { (currentValue - costBasis) / costBasis * 100 }
     var totalValue: Double { currentValue * Double(contracts) * 100 }
+
+    init(optionId: Int? = nil,
+         underlyingTicker: String,
+         type: OptionType,
+         strikePrice: Double,
+         expiryDate: Date,
+         contracts: Int,
+         costBasis: Double,
+         currentValue: Double) {
+        self.optionId = optionId
+        self.underlyingTicker = underlyingTicker
+        self.type = type
+        self.strikePrice = strikePrice
+        self.expiryDate = expiryDate
+        self.contracts = contracts
+        self.costBasis = costBasis
+        self.currentValue = currentValue
+    }
 }
 
 // MARK: - Available Option (for display in the options chain; not yet purchased)
 
 struct AvailableOption: Identifiable {
     let id = UUID()
+    let optionId: Int
     let type: OptionType
     let strikePrice: Double
     let expiryDate: Date

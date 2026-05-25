@@ -387,6 +387,7 @@ private struct HeldAssetsSection: View {
 
     @EnvironmentObject var appState: AppState
     @State private var selectedHolding: HeldAsset?
+    @State private var expandedTicker: String?
 
     private let fmt: NumberFormatter = {
         let f = NumberFormatter()
@@ -425,13 +426,29 @@ private struct HeldAssetsSection: View {
 
             VStack(spacing: 10) {
                 ForEach(holdings) { holding in
-                    HeldAssetRow(
-                        holding: holding,
-                        accentColor: categoryColor(holding.asset.category),
-                        fmt: fmt
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture { selectedHolding = holding }
+                    let isExpanded = expandedTicker == holding.asset.ticker
+                    VStack(spacing: 0) {
+                        HeldAssetRow(
+                            holding: holding,
+                            accentColor: categoryColor(holding.asset.category),
+                            fmt: fmt,
+                            isExpanded: isExpanded,
+                            onExpand: {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    expandedTicker = isExpanded ? nil : holding.asset.ticker
+                                }
+                            }
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { selectedHolding = holding }
+
+                        if isExpanded {
+                            OptionsExpandedView(
+                                options: optionsByTicker[holding.asset.ticker] ?? []
+                            )
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
                 }
             }
         }
@@ -449,6 +466,8 @@ private struct HeldAssetRow: View {
     let holding: HeldAsset
     let accentColor: Color
     let fmt: NumberFormatter
+    var isExpanded: Bool = false
+    var onExpand: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -484,10 +503,76 @@ private struct HeldAssetRow: View {
                     .foregroundStyle(gain >= 0 ? Color.teal : Color.pink)
             }
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.25))
+            Button { onExpand?() } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.25))
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .animation(.easeInOut(duration: 0.25), value: isExpanded)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
+    }
+}
+
+private struct OptionsExpandedView: View {
+    let options: [OptionsContract]
+
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d, yyyy"
+        return f
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Rectangle()
+                .fill(.white.opacity(0.06))
+                .frame(height: 1)
+                .padding(.vertical, 4)
+
+            if options.isEmpty {
+                Text("No options held")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .padding(.vertical, 4)
+            } else {
+                ForEach(options) { opt in
+                    HStack(spacing: 12) {
+                        Text(opt.type == .call ? "C" : "P")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(opt.type == .call ? Color.teal : Color.pink)
+                            .frame(width: 26, height: 26)
+                            .background((opt.type == .call ? Color.teal : Color.pink).opacity(0.15))
+                            .clipShape(Circle())
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(opt.type.rawValue)  Strike $\(String(format: "%.0f", opt.strikePrice))")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.9))
+                            Text("Exp \(Self.dateFormatter.string(from: opt.expiryDate))  ·  \(opt.contracts) contract\(opt.contracts == 1 ? "" : "s")")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.4))
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("$\(String(format: "%.2f", opt.currentValue))")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.8))
+                            let pnl = opt.pnlPct
+                            Text("\(pnl >= 0 ? "+" : "")\(String(format: "%.1f", pnl))%")
+                                .font(.system(size: 10))
+                                .foregroundStyle(pnl >= 0 ? Color.teal : Color.pink)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.top, 4)
     }
 }
 

@@ -13,6 +13,8 @@ struct AssetDetailsView: View {
     @State private var projectedPoints:  [PriceDataPoint] = []
     @State private var shareQty: Int = 1
     @State private var tradingOption: AvailableOption? = nil
+    @State private var chainOptions: [BackendAPIClient.OptionOut] = []
+    @State private var chainLoaded = false
 
     private let fmt: NumberFormatter = {
         let f = NumberFormatter()
@@ -33,8 +35,27 @@ struct AssetDetailsView: View {
         holding?.currentPrice ?? OptimisationEngine.referencePrices[asset.ticker] ?? 100
     }
 
+    private static let expiryDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(abbreviation: "UTC")
+        return f
+    }()
+
     private var availableChain: [AvailableOption] {
-        Self.generateChain(for: asset, price: displayPrice)
+        chainOptions.compactMap { opt in
+            guard let typeStr = opt.optionType,
+                  let strike  = opt.strikePrice,
+                  let premium = opt.premium,
+                  let expiryStr = opt.expiryDate,
+                  let expiry = Self.expiryDateFormatter.date(from: expiryStr) else { return nil }
+            let optType: OptionType = typeStr.lowercased() == "call" ? .call : .put
+            let days = max(Calendar.current.dateComponents([.day], from: Date(), to: expiry).day ?? 1, 1)
+            return AvailableOption(optionId: opt.optionId, type: optType,
+                                   strikePrice: strike, expiryDate: expiry,
+                                   premium: premium, daysToExpiry: days)
+        }
     }
 
     var body: some View {
@@ -72,6 +93,7 @@ struct AssetDetailsView: View {
 
                         AvailableOptionsChain(
                             chain: availableChain,
+                            isLoaded: chainLoaded,
                             asset: asset,
                             fmt: fmt,
                             onTrade: { opt in tradingOption = opt }
@@ -84,6 +106,7 @@ struct AssetDetailsView: View {
             }
         }
         .onAppear { generateChartData() }
+        .task { await loadOptionsChain() }
         .sheet(item: $tradingOption) { opt in
             OptionTradeModal(
                 option: opt,
@@ -126,24 +149,41 @@ struct AssetDetailsView: View {
         }
     }
 
+    // MARK: - Options chain fetch
+
+    private func loadOptionsChain() async {
+        guard let assetId = appState.assetIdByTicker[asset.ticker] else {
+            chainLoaded = true
+            return
+        }
+        chainOptions = (try? await appState.apiClient.fetchAllAssetOptions(assetId: assetId)) ?? []
+        chainLoaded = true
+    }
+
     // MARK: - Trade actions
 
     private func addShares(qty: Double? = nil) {
         let q = qty ?? Double(shareQty)
         let price = displayPrice
+        let newShares: Double
+        let newAvgCost: Double
         if let idx = appState.holdings.firstIndex(where: { $0.asset.ticker == asset.ticker }) {
             let old = appState.holdings[idx]
-            let newShares = old.shares + q
-            let newAvgCost = (old.shares * old.avgCost + q * price) / newShares
-            appState.holdings[idx] = HeldAsset(
-                asset: old.asset, shares: newShares,
-                avgCost: newAvgCost, currentPrice: old.currentPrice
-            )
+            newShares = old.shares + q
+            newAvgCost = (old.shares * old.avgCost + q * price) / newShares
+            appState.holdings[idx] = HeldAsset(asset: old.asset, shares: newShares,
+                                               avgCost: newAvgCost, currentPrice: old.currentPrice)
         } else {
-            appState.holdings.append(HeldAsset(
-                asset: asset, shares: q,
-                avgCost: price, currentPrice: price
-            ))
+            newShares = q
+            newAvgCost = price
+            appState.holdings.append(HeldAsset(asset: asset, shares: newShares,
+                                               avgCost: newAvgCost, currentPrice: price))
+        }
+        guard let assetId = appState.assetIdByTicker[asset.ticker],
+              let userId  = appState.currentUser?.userId else { return }
+        Task {
+            try? await appState.apiClient.upsertUserAsset(userId: userId, assetId: assetId,
+                                                          quantity: newShares, avgCostBasis: newAvgCost)
         }
     }
 
@@ -151,60 +191,48 @@ struct AssetDetailsView: View {
         guard let idx = appState.holdings.firstIndex(where: { $0.asset.ticker == asset.ticker }) else { return }
         let old = appState.holdings[idx]
         let remaining = old.shares - Double(shareQty)
+        guard let assetId = appState.assetIdByTicker[asset.ticker],
+              let userId  = appState.currentUser?.userId else { return }
         if remaining <= 0 {
             appState.holdings.remove(at: idx)
+            Task { try? await appState.apiClient.deleteUserAsset(userId: userId, assetId: assetId) }
             dismiss()
         } else {
-            appState.holdings[idx] = HeldAsset(
-                asset: old.asset, shares: remaining,
-                avgCost: old.avgCost, currentPrice: old.currentPrice
-            )
+            appState.holdings[idx] = HeldAsset(asset: old.asset, shares: remaining,
+                                               avgCost: old.avgCost, currentPrice: old.currentPrice)
+            Task {
+                try? await appState.apiClient.upsertUserAsset(userId: userId, assetId: assetId,
+                                                              quantity: remaining, avgCostBasis: old.avgCost)
+            }
         }
     }
 
     private func buyOption(_ option: AvailableOption, contracts: Int, bundleShares: Bool) {
-        let newContract = OptionsContract(
-            underlyingTicker: asset.ticker,
-            type: option.type,
-            strikePrice: option.strikePrice,
-            expiryDate: option.expiryDate,
-            contracts: contracts,
-            costBasis: option.premium,
-            currentValue: option.premium
-        )
-        if appState.optionsByTicker[asset.ticker] != nil {
-            appState.optionsByTicker[asset.ticker]!.append(newContract)
+        var arr = appState.optionsByTicker[asset.ticker] ?? []
+        let existing = arr.first(where: { $0.optionId == option.optionId })?.contracts ?? 0
+        let totalContracts = existing + contracts
+        let updated = OptionsContract(optionId: option.optionId,
+                                      underlyingTicker: asset.ticker,
+                                      type: option.type,
+                                      strikePrice: option.strikePrice,
+                                      expiryDate: option.expiryDate,
+                                      contracts: totalContracts,
+                                      costBasis: option.premium,
+                                      currentValue: option.premium)
+        if let idx = arr.firstIndex(where: { $0.optionId == option.optionId }) {
+            arr[idx] = updated
         } else {
-            appState.optionsByTicker[asset.ticker] = [newContract]
+            arr.append(updated)
         }
-        if bundleShares {
-            addShares(qty: Double(contracts * 100))
+        appState.optionsByTicker[asset.ticker] = arr
+
+        guard let userId = appState.currentUser?.userId else { return }
+        Task {
+            try? await appState.apiClient.upsertUserOption(userId: userId,
+                                                           optionId: option.optionId,
+                                                           contractsHeld: totalContracts)
         }
-    }
-
-    // MARK: - Options chain generation
-
-    static func generateChain(for asset: AssetInfo, price: Double) -> [AvailableOption] {
-        let vol = asset.annualVolatility
-        let cal = Calendar.current
-        let now = Date()
-        let maturities = [30, 90, 180]
-        let offsets: [Double] = [-0.10, -0.05, 0.0, 0.05, 0.10]
-
-        var chain: [AvailableOption] = []
-        for days in maturities {
-            let T = Double(days) / 365.0
-            let atm = price * vol * sqrt(T) * 0.4
-            guard let expiry = cal.date(byAdding: .day, value: days, to: now) else { continue }
-            for offset in offsets {
-                let strike = (price * (1 + offset)).rounded()
-                let callPremium = max(max(price - strike, 0) + atm * max(1.0 - offset * 3.0, 0.05), 0.01)
-                let putPremium  = max(max(strike - price, 0) + atm * max(1.0 + offset * 3.0, 0.05), 0.01)
-                chain.append(AvailableOption(type: .call, strikePrice: strike, expiryDate: expiry, premium: callPremium,  daysToExpiry: days))
-                chain.append(AvailableOption(type: .put,  strikePrice: strike, expiryDate: expiry, premium: putPremium,   daysToExpiry: days))
-            }
-        }
-        return chain
+        if bundleShares { addShares(qty: Double(contracts * 100)) }
     }
 }
 
@@ -638,16 +666,21 @@ private struct OptionsContractRow: View {
 
 private struct AvailableOptionsChain: View {
     let chain: [AvailableOption]
+    let isLoaded: Bool
     let asset: AssetInfo
     let fmt: NumberFormatter
     let onTrade: (AvailableOption) -> Void
 
-    @State private var selectedDays: Int = 30
+    @State private var selectedDays: Int = 0
     @State private var selectedType: OptionType = .call
 
     private static let dateFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "MMM d"; return f
     }()
+
+    private var availableDays: [Int] {
+        Array(Set(chain.map { $0.daysToExpiry })).sorted()
+    }
 
     private var filtered: [AvailableOption] {
         chain.filter { $0.daysToExpiry == selectedDays && $0.type == selectedType }
@@ -658,52 +691,85 @@ private struct AvailableOptionsChain: View {
             Text("AVAILABLE OPTIONS CHAIN")
                 .font(.system(size: 10, weight: .bold)).foregroundStyle(.white.opacity(0.5)).tracking(1.5)
 
-            // Maturity filter + Call/Put toggle
-            HStack(spacing: 8) {
-                ForEach([30, 90, 180], id: \.self) { days in
-                    Button { selectedDays = days } label: {
-                        Text("\(days)d")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(selectedDays == days ? Color(red: 0.039, green: 0.027, blue: 0.063) : .white.opacity(0.5))
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(selectedDays == days ? Color.teal : Color.white.opacity(0.06))
-                            .clipShape(Capsule())
-                    }
+            if !isLoaded {
+                HStack(spacing: 10) {
+                    ProgressView().scaleEffect(0.8).tint(Color.teal)
+                    Text("Loading options chain…")
+                        .font(.system(size: 13)).foregroundStyle(.white.opacity(0.4))
                 }
-                Spacer()
-                HStack(spacing: 0) {
-                    ForEach([OptionType.call, .put], id: \.rawValue) { type in
-                        Button { selectedType = type } label: {
-                            Text(type.rawValue)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(selectedType == type ? Color(red: 0.039, green: 0.027, blue: 0.063) : .white.opacity(0.5))
-                                .padding(.horizontal, 14).padding(.vertical, 6)
-                                .background(selectedType == type
-                                    ? (type == .call ? Color.teal : Color.pink)
-                                    : Color.white.opacity(0.06))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16).background(.white.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            } else if chain.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "doc.plaintext").font(.system(size: 15)).foregroundStyle(.white.opacity(0.2))
+                    Text("No options available for this asset")
+                        .font(.system(size: 13)).foregroundStyle(.white.opacity(0.35))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16).background(.white.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            } else {
+                // Maturity filter + Call/Put toggle
+                HStack(alignment: .center, spacing: 8) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(availableDays, id: \.self) { days in
+                                Button { selectedDays = days } label: {
+                                    Text("\(days)d")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(selectedDays == days ? Color(red: 0.039, green: 0.027, blue: 0.063) : .white.opacity(0.5))
+                                        .padding(.horizontal, 12).padding(.vertical, 6)
+                                        .background(selectedDays == days ? Color.teal : Color.white.opacity(0.06))
+                                        .clipShape(Capsule())
+                                }
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 0) {
+                        ForEach([OptionType.call, .put], id: \.rawValue) { type in
+                            Button { selectedType = type } label: {
+                                Text(type.rawValue)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(selectedType == type ? Color(red: 0.039, green: 0.027, blue: 0.063) : .white.opacity(0.5))
+                                    .padding(.horizontal, 14).padding(.vertical, 6)
+                                    .background(selectedType == type
+                                        ? (type == .call ? Color.teal : Color.pink)
+                                        : Color.white.opacity(0.06))
+                            }
+                        }
+                    }
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(.white.opacity(0.1), lineWidth: 1))
+                    .fixedSize()
+                }
+
+                // Column headers
+                HStack {
+                    Text("STRIKE").font(.system(size: 9, weight: .bold)).foregroundStyle(.white.opacity(0.3)).tracking(1).frame(width: 64, alignment: .leading)
+                    Text("PREMIUM").font(.system(size: 9, weight: .bold)).foregroundStyle(.white.opacity(0.3)).tracking(1)
+                    Spacer()
+                    Text("EXPIRY").font(.system(size: 9, weight: .bold)).foregroundStyle(.white.opacity(0.3)).tracking(1)
+                }
+                .padding(.horizontal, 4)
+
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(filtered) { opt in
+                            AvailableOptionRow(option: opt, fmt: fmt, dateFmt: Self.dateFmt, onTrade: { onTrade(opt) })
                         }
                     }
                 }
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(.white.opacity(0.1), lineWidth: 1))
-            }
-
-            // Column headers
-            HStack {
-                Text("STRIKE").font(.system(size: 9, weight: .bold)).foregroundStyle(.white.opacity(0.3)).tracking(1).frame(width: 64, alignment: .leading)
-                Text("PREMIUM").font(.system(size: 9, weight: .bold)).foregroundStyle(.white.opacity(0.3)).tracking(1)
-                Spacer()
-                Text("EXPIRY").font(.system(size: 9, weight: .bold)).foregroundStyle(.white.opacity(0.3)).tracking(1)
-            }
-            .padding(.horizontal, 4)
-
-            VStack(spacing: 8) {
-                ForEach(filtered) { opt in
-                    AvailableOptionRow(option: opt, fmt: fmt, dateFmt: Self.dateFmt, onTrade: { onTrade(opt) })
-                }
+                .frame(maxHeight: 320)
             }
         }
         .padding(20).glassCard(cornerRadius: 28).padding(.horizontal, 16)
+        .task(id: chain.count) {
+            if let first = availableDays.first, !availableDays.contains(selectedDays) {
+                selectedDays = first
+            }
+        }
     }
 }
 

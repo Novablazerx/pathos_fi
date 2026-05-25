@@ -6,9 +6,9 @@ struct ExploreAssetsView: View {
     @State private var searchText = ""
     @State private var selectedAsset: AssetInfo? = nil
 
-    private let allAssets: [AssetInfo] = OptimisationEngine.assetLibrary
-        .values
-        .sorted { $0.ticker < $1.ticker }
+    private var allAssets: [AssetInfo] {
+        appState.backendAssets.sorted { $0.ticker < $1.ticker }
+    }
 
     private var filteredAssets: [AssetInfo] {
         allAssets.filter { asset in
@@ -45,31 +45,42 @@ struct ExploreAssetsView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
 
-                ScrollView {
-                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
-                        ForEach(groupedAssets, id: \.category) { group in
-                            Section {
-                                VStack(spacing: 10) {
-                                    ForEach(group.assets) { asset in
-                                        Button { selectedAsset = asset } label: {
-                                            AssetMarketplaceRow(asset: asset)
+                if appState.backendAssets.isEmpty {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        ProgressView().tint(Color.teal)
+                        Text("Loading assets…")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white.opacity(0.4))
+                    }
+                    Spacer()
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                            ForEach(groupedAssets, id: \.category) { group in
+                                Section {
+                                    VStack(spacing: 10) {
+                                        ForEach(group.assets) { asset in
+                                            Button { selectedAsset = asset } label: {
+                                                AssetMarketplaceRow(asset: asset)
+                                            }
+                                            .buttonStyle(.plain)
                                         }
-                                        .buttonStyle(.plain)
                                     }
+                                    .padding(.horizontal, 16)
+                                    .padding(.bottom, 16)
+                                } header: {
+                                    AssetSectionHeader(category: group.category, count: group.assets.count)
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.bottom, 16)
-                            } header: {
-                                AssetSectionHeader(category: group.category, count: group.assets.count)
                             }
+                            Spacer(minLength: 40)
                         }
-                        Spacer(minLength: 40)
                     }
                 }
-                .fullScreenCover(item: $selectedAsset) { asset in
-                    AssetDetailsView(asset: asset)
-                        .environmentObject(appState)
-                }
+            }
+            .fullScreenCover(item: $selectedAsset) { asset in
+                AssetDetailsView(asset: asset)
+                    .environmentObject(appState)
             }
         }
     }

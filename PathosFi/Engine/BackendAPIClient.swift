@@ -156,12 +156,145 @@ actor BackendAPIClient {
         _ = try? await post(endpoint: "rlhf/sync", body: batch)
     }
 
+    // MARK: - User & Portfolio Data
+
+    struct UserRecord: Codable {
+        let userId: Int
+        let username: String
+        let email: String
+        let riskProfile: String?
+        let cashBalance: Double
+
+        enum CodingKeys: String, CodingKey {
+            case userId      = "user_id"
+            case username
+            case email
+            case riskProfile = "risk_profile"
+            case cashBalance = "cash_balance"
+        }
+    }
+
+    struct AssetOut: Codable {
+        let assetId: Int
+        let ticker: String
+        let assetName: String?
+        let assetType: String?
+        let sector: String?
+
+        enum CodingKeys: String, CodingKey {
+            case assetId  = "asset_id"
+            case ticker
+            case assetName = "asset_name"
+            case assetType = "asset_type"
+            case sector
+        }
+    }
+
+    struct UserAssetOut: Codable {
+        let assetId: Int
+        let ticker: String
+        let assetName: String?
+        let quantity: Double
+        let avgCostBasis: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case assetId      = "asset_id"
+            case ticker
+            case assetName    = "asset_name"
+            case quantity
+            case avgCostBasis = "avg_cost_basis"
+        }
+    }
+
+    struct OptionOut: Codable {
+        let optionId: Int
+        let assetId: Int
+        let optionType: String?
+        let strikePrice: Double?
+        let expiryDate: String?
+        let premium: Double?
+        let impliedVolatility: Double?
+        let contractSize: Int
+
+        enum CodingKeys: String, CodingKey {
+            case optionId         = "option_id"
+            case assetId          = "asset_id"
+            case optionType       = "option_type"
+            case strikePrice      = "strike_price"
+            case expiryDate       = "expiry_date"
+            case premium
+            case impliedVolatility = "implied_volatility"
+            case contractSize     = "contract_size"
+        }
+    }
+
+    func fetchUser(username: String) async throws -> UserRecord {
+        let data = try await get(endpoint: "users/by-username/\(username)")
+        return try JSONDecoder().decode(UserRecord.self, from: data)
+    }
+
+    func fetchAllAssets() async throws -> [AssetOut] {
+        let data = try await get(endpoint: "assets")
+        return try JSONDecoder().decode([AssetOut].self, from: data)
+    }
+
+    func fetchUserAssets(userId: Int) async throws -> [UserAssetOut] {
+        let data = try await get(endpoint: "users/\(userId)/assets")
+        return try JSONDecoder().decode([UserAssetOut].self, from: data)
+    }
+
+    func fetchOptions(assetId: Int, userId: Int) async throws -> [OptionOut] {
+        let data = try await get(endpoint: "assets/\(assetId)/options/users/\(userId)")
+        return try JSONDecoder().decode([OptionOut].self, from: data)
+    }
+
+    func updateUserRiskProfile(userId: Int, riskProfile: String) async throws {
+        struct Body: Encodable { let risk_profile: String }
+        _ = try await patch(endpoint: "users/\(userId)", body: Body(risk_profile: riskProfile))
+    }
+
+    func fetchAllAssetOptions(assetId: Int) async throws -> [OptionOut] {
+        let data = try await get(endpoint: "assets/\(assetId)/options")
+        return try JSONDecoder().decode([OptionOut].self, from: data)
+    }
+
+    func upsertUserAsset(userId: Int, assetId: Int, quantity: Double, avgCostBasis: Double?) async throws {
+        struct Body: Encodable { let quantity: Double; let avg_cost_basis: Double? }
+        _ = try await put(endpoint: "users/\(userId)/assets/\(assetId)",
+                          body: Body(quantity: quantity, avg_cost_basis: avgCostBasis))
+    }
+
+    func deleteUserAsset(userId: Int, assetId: Int) async throws {
+        try await delete(endpoint: "users/\(userId)/assets/\(assetId)")
+    }
+
+    func upsertUserOption(userId: Int, optionId: Int, contractsHeld: Int) async throws {
+        struct Body: Encodable { let contracts_held: Int }
+        _ = try await put(endpoint: "users/\(userId)/options/\(optionId)",
+                          body: Body(contracts_held: contractsHeld))
+    }
+
+    func deleteUserOption(userId: Int, optionId: Int) async throws {
+        try await delete(endpoint: "users/\(userId)/options/\(optionId)")
+    }
+
     // MARK: - Private Helpers
 
     enum APIError: Error {
         case networkFailure
         case decodingFailure
         case serverError(Int)
+    }
+
+    private func get(endpoint: String) async throws -> Data {
+        let base = baseURL.absoluteString
+        let slash = base.hasSuffix("/") ? "" : "/"
+        guard let url = URL(string: base + slash + endpoint) else { throw APIError.networkFailure }
+        let (data, response) = try await session.data(from: url)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw APIError.serverError(http.statusCode)
+        }
+        return data
     }
 
     private func post<T: Encodable>(endpoint: String, body: T) async throws -> Data {
@@ -176,5 +309,44 @@ actor BackendAPIClient {
             throw APIError.serverError(http.statusCode)
         }
         return data
+    }
+
+    private func patch<T: Encodable>(endpoint: String, body: T) async throws -> Data {
+        var urlRequest = URLRequest(url: baseURL.appendingPathComponent(endpoint))
+        urlRequest.httpMethod = "PATCH"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await session.data(for: urlRequest)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw APIError.serverError(http.statusCode)
+        }
+        return data
+    }
+
+    private func put<T: Encodable>(endpoint: String, body: T) async throws -> Data {
+        let base = baseURL.absoluteString
+        let slash = base.hasSuffix("/") ? "" : "/"
+        guard let url = URL(string: base + slash + endpoint) else { throw APIError.networkFailure }
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await session.data(for: req)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw APIError.serverError(http.statusCode)
+        }
+        return data
+    }
+
+    private func delete(endpoint: String) async throws {
+        let base = baseURL.absoluteString
+        let slash = base.hasSuffix("/") ? "" : "/"
+        guard let url = URL(string: base + slash + endpoint) else { throw APIError.networkFailure }
+        var req = URLRequest(url: url)
+        req.httpMethod = "DELETE"
+        let (_, response) = try await session.data(for: req)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw APIError.serverError(http.statusCode)
+        }
     }
 }

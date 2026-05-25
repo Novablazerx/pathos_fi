@@ -3,11 +3,17 @@ import Combine
 
 @MainActor
 class RiskAssessmentViewModel: ObservableObject {
-    @Published var capitalInput: String = "10000"
-    @Published var capitalRaw: Double = 10_000
-//    var selectedHorizon: TimeHorizon = .oneYear
-    var selectedHorizon: TimeHorizon = .oneMonth
-    @Published var maxLossPercent: Double = 15.0
+    @Published var capitalInput: String
+    @Published var capitalRaw: Double
+    var selectedHorizon: TimeHorizon
+    @Published var maxLossPercent: Double
+
+    init(profile: RiskProfileInput = RiskProfileInput()) {
+        capitalRaw    = profile.startingCapital
+        capitalInput  = String(Int(profile.startingCapital))
+        selectedHorizon = profile.timeHorizon
+        maxLossPercent  = profile.maxLossPercent
+    }
 
     var formattedCapital: String {
         let formatter = NumberFormatter()

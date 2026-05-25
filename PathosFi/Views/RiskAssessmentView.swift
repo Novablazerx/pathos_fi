@@ -2,7 +2,11 @@ import SwiftUI
 
 struct RiskAssessmentView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var viewModel = RiskAssessmentViewModel()
+    @StateObject private var viewModel: RiskAssessmentViewModel
+
+    init(profile: RiskProfileInput = RiskProfileInput()) {
+        _viewModel = StateObject(wrappedValue: RiskAssessmentViewModel(profile: profile))
+    }
 
     var body: some View {
         ZStack {
@@ -105,11 +109,13 @@ struct RiskAssessmentView: View {
 
                 // MARK: CTA
                 GradientCTAButton(label: "Run Simulation") {
-                    appState.riskProfile = RiskProfileInput(
+                    let profile = RiskProfileInput(
                         startingCapital: viewModel.capitalRaw,
                         timeHorizon: viewModel.selectedHorizon,
                         maxLossPercent: viewModel.maxLossPercent
                     )
+                    appState.riskProfile = profile
+                    Task { await appState.saveRiskProfile(profile) }
                     appState.navigateToDashboard()
                 }
                 .padding(.horizontal, 20)

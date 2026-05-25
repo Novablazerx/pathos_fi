@@ -3,6 +3,7 @@ import Combine
 import Foundation
 
 enum AppScreen {
+    case loading
     case onboarding
     case dashboard
     case recommendations
@@ -10,41 +11,130 @@ enum AppScreen {
 }
 
 class AppState: ObservableObject {
-    @Published var currentScreen: AppScreen = .onboarding
+    @Published var currentScreen: AppScreen = .loading
+    @Published var currentUser: BackendAPIClient.UserRecord? = nil
     @Published var riskProfile: RiskProfileInput = RiskProfileInput()
     @Published var simulationResult: SimulationResult? = nil
     @Published var selectedPair: SmartPairModel? = nil
 
-    @Published var holdings: [HeldAsset] = {
-        let lib = OptimisationEngine.assetLibrary
-        return [
-//            HeldAsset(asset: lib["SPY"]!, shares: 5,  avgCost: 420, currentPrice: 456),
-//            HeldAsset(asset: lib["QQQ"]!, shares: 3,  avgCost: 340, currentPrice: 382),
-//            HeldAsset(asset: lib["GLD"]!, shares: 10, avgCost: 185, currentPrice: 192),
-            HeldAsset(asset: lib["AAPL"]!, shares: 10, avgCost: 305, currentPrice: 305),
-        ]
-    }()
+    @Published var holdings: [HeldAsset] = []
+    @Published var backendAssets: [AssetInfo] = []
+    var assetIdByTicker: [String: Int] = [:]
 
-    @Published var optionsByTicker: [String: [OptionsContract]] = {
-        let cal = Calendar.current; let now = Date()
-        func expiry(_ m: Int) -> Date { cal.date(byAdding: .month, value: m, to: now) ?? now }
-        return [:]
-//        return [
-//            "SPY": [
-//                OptionsContract(underlyingTicker: "SPY", type: .put,  strikePrice: 440, expiryDate: expiry(3), contracts: 1, costBasis: 8.50, currentValue: 11.20),
-//                OptionsContract(underlyingTicker: "SPY", type: .call, strikePrice: 475, expiryDate: expiry(6), contracts: 2, costBasis: 6.30, currentValue: 4.80),
-//            ],
-//            "QQQ": [
-//                OptionsContract(underlyingTicker: "QQQ", type: .put,  strikePrice: 360, expiryDate: expiry(2), contracts: 1, costBasis: 7.20, currentValue: 9.40),
-//            ],
-//        ]
-    }()
+    @Published var optionsByTicker: [String: [OptionsContract]] = [:]
 
     var portfolioValue: Double {
         let equity  = holdings.reduce(0.0) { $0 + $1.value }
         let options = optionsByTicker.values.flatMap { $0 }.reduce(0.0) { $0 + $1.totalValue }
         return equity + options
     }
+
+    let apiClient = BackendAPIClient()
+
+    // MARK: - App Initialization
+
+    @MainActor
+    func initializeApp() async {
+        currentScreen = .loading
+        do {
+            let user = try await apiClient.fetchUser(username: "testuser")
+            currentUser = user
+            riskProfile.startingCapital = user.cashBalance
+
+            async let allAssetsTask  = apiClient.fetchAllAssets()
+            async let userAssetsTask = apiClient.fetchUserAssets(userId: user.userId)
+            let (allAssets, userAssets) = try await (allAssetsTask, userAssetsTask)
+
+            let assetLib      = OptimisationEngine.assetLibrary
+            let assetMetadata = Dictionary(uniqueKeysWithValues: allAssets.map { ($0.assetId, $0) })
+            assetIdByTicker   = Dictionary(uniqueKeysWithValues: allAssets.map { ($0.ticker, $0.assetId) })
+
+            backendAssets = allAssets.map { ao in
+                let known = assetLib[ao.ticker]
+                let category: AssetCategory
+                switch ao.assetType?.lowercased() {
+                case "bond":                      category = .bond
+                case "commodity":                 category = .commodity
+                case "option":                    category = .option
+                case "inverse_equity", "inverse": category = .inverseEquity
+                default:                          category = known?.category ?? .equity
+                }
+                return AssetInfo(
+                    ticker: ao.ticker,
+                    name: ao.assetName ?? known?.name ?? ao.ticker,
+                    annualReturn: known?.annualReturn ?? 0,
+                    annualVolatility: known?.annualVolatility ?? 0.20,
+                    category: category
+                )
+            }
+
+            holdings = userAssets.map { ua in
+                let cost = ua.avgCostBasis ?? 0
+                let name = ua.assetName ?? assetMetadata[ua.assetId]?.assetName ?? ua.ticker
+                let category: AssetCategory
+                switch assetMetadata[ua.assetId]?.assetType?.lowercased() {
+                case "bond":   category = .bond
+                case "option": category = .option
+                default:       category = .equity
+                }
+                let info = assetLib[ua.ticker] ?? AssetInfo(
+                    ticker: ua.ticker,
+                    name: name,
+                    annualReturn: 0,
+                    annualVolatility: 0.20,
+                    category: category
+                )
+                return HeldAsset(asset: info, shares: ua.quantity, avgCost: cost, currentPrice: cost)
+            }
+
+            let isoFormatter = DateFormatter()
+            isoFormatter.dateFormat = "yyyy-MM-dd"
+            var newOptions: [String: [OptionsContract]] = [:]
+
+            for ua in userAssets {
+                let opts = (try? await apiClient.fetchOptions(assetId: ua.assetId, userId: user.userId)) ?? []
+                let contracts: [OptionsContract] = opts.compactMap { (opt) -> OptionsContract? in
+                    guard let typeStr = opt.optionType, let strike = opt.strikePrice else { return nil }
+                    let optType: OptionType = typeStr.lowercased() == "call" ? .call : .put
+                    let expiry = opt.expiryDate.flatMap { isoFormatter.date(from: $0) }
+                        ?? Date().addingTimeInterval(90 * 86400)
+                    let premium = opt.premium ?? 0
+                    return OptionsContract(
+                        optionId: opt.optionId,
+                        underlyingTicker: ua.ticker,
+                        type: optType,
+                        strikePrice: strike,
+                        expiryDate: expiry,
+                        contracts: opt.contractSize,
+                        costBasis: premium,
+                        currentValue: premium
+                    )
+                }
+                if !contracts.isEmpty { newOptions[ua.ticker] = contracts }
+            }
+            optionsByTicker = newOptions
+
+            currentScreen = .dashboard
+        } catch {
+            currentScreen = .onboarding
+        }
+    }
+
+    // MARK: - Risk Profile Sync
+
+    @MainActor
+    func saveRiskProfile(_ profile: RiskProfileInput) async {
+        guard let user = currentUser else { return }
+        let label: String
+        switch profile.maxLossPercent {
+        case 0...10:  label = "conservative"
+        case 10...25: label = "moderate"
+        default:      label = "aggressive"
+        }
+        try? await apiClient.updateUserRiskProfile(userId: user.userId, riskProfile: label)
+    }
+
+    // MARK: - Navigation
 
     func navigateToDashboard() {
         currentScreen = .dashboard
@@ -64,7 +154,7 @@ class AppState: ObservableObject {
             currentScreen = .dashboard
         case .dashboard:
             currentScreen = .onboarding
-        case .onboarding:
+        case .onboarding, .loading:
             break
         }
     }
@@ -72,7 +162,6 @@ class AppState: ObservableObject {
 
 struct RiskProfileInput {
     var startingCapital: Double = 10000
-//    var timeHorizon: TimeHorizon = .sixMonths
     var timeHorizon: TimeHorizon = .oneMonth
     var maxLossPercent: Double = 15.0
 }
