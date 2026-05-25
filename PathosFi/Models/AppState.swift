@@ -26,7 +26,26 @@ class AppState: ObservableObject {
     var portfolioValue: Double {
         let equity  = holdings.reduce(0.0) { $0 + $1.value }
         let options = optionsByTicker.values.flatMap { $0 }.reduce(0.0) { $0 + $1.totalValue }
-        return equity + options
+        let cash    = currentUser?.cashBalance ?? 0
+        return equity + options + cash
+    }
+
+    /// Adjusts the in-memory cash balance by `delta` (positive = credit, negative = debit)
+    /// and persists the new balance to the backend.
+    @MainActor
+    func adjustCashBalance(by delta: Double) {
+        guard let user = currentUser else { return }
+        let newBalance = user.cashBalance + delta
+        currentUser = BackendAPIClient.UserRecord(
+            userId: user.userId,
+            username: user.username,
+            email: user.email,
+            riskProfile: user.riskProfile,
+            cashBalance: newBalance
+        )
+        Task {
+            try? await apiClient.updateCashBalance(userId: user.userId, cashBalance: newBalance)
+        }
     }
 
     let apiClient = BackendAPIClient()
@@ -105,7 +124,7 @@ class AppState: ObservableObject {
                         type: optType,
                         strikePrice: strike,
                         expiryDate: expiry,
-                        contracts: opt.contractSize,
+                        contracts: opt.contractsHeld ?? 1,
                         costBasis: premium,
                         currentValue: premium
                     )
@@ -113,6 +132,8 @@ class AppState: ObservableObject {
                 if !contracts.isEmpty { newOptions[ua.ticker] = contracts }
             }
             optionsByTicker = newOptions
+
+            riskProfile.startingCapital = user.cashBalance
 
             currentScreen = .dashboard
         } catch {
@@ -153,6 +174,7 @@ class AppState: ObservableObject {
         case .recommendations, .exploreAssets:
             currentScreen = .dashboard
         case .dashboard:
+            riskProfile.startingCapital = currentUser?.cashBalance ?? riskProfile.startingCapital
             currentScreen = .onboarding
         case .onboarding, .loading:
             break

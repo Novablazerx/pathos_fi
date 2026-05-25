@@ -15,6 +15,7 @@ struct AssetDetailsView: View {
     @State private var tradingOption: AvailableOption? = nil
     @State private var chainOptions: [BackendAPIClient.OptionOut] = []
     @State private var chainLoaded = false
+    @State private var sellingOption: OptionsContract? = nil
 
     private let fmt: NumberFormatter = {
         let f = NumberFormatter()
@@ -43,8 +44,13 @@ struct AssetDetailsView: View {
         return f
     }()
 
+    private var heldOptionIds: Set<Int> {
+        Set(appState.optionsByTicker[asset.ticker]?.compactMap { $0.optionId } ?? [])
+    }
+
     private var availableChain: [AvailableOption] {
         chainOptions.compactMap { opt in
+            guard !heldOptionIds.contains(opt.optionId) else { return nil }
             guard let typeStr = opt.optionType,
                   let strike  = opt.strikePrice,
                   let premium = opt.premium,
@@ -76,7 +82,7 @@ struct AssetDetailsView: View {
                         AssetPriceChart(
                             historical: historicalPoints,
                             projected:  projectedPoints,
-                            currentPrice: displayPrice
+                            currentPrice: projectedPoints.first?.price ?? displayPrice
                         )
 
                         YourPositionPanel(
@@ -89,7 +95,11 @@ struct AssetDetailsView: View {
                             onDrop: dropShares
                         )
 
-                        ActiveOptionsSection(options: liveOptions, fmt: fmt)
+                        ActiveOptionsSection(
+                            options: liveOptions,
+                            fmt: fmt,
+                            onSell: { contract in sellingOption = contract }
+                        )
 
                         AvailableOptionsChain(
                             chain: availableChain,
@@ -105,8 +115,20 @@ struct AssetDetailsView: View {
                 }
             }
         }
-        .onAppear { generateChartData() }
+        .task { await loadChartData() }
         .task { await loadOptionsChain() }
+        .sheet(item: $sellingOption) { contract in
+            OptionSellModal(
+                contract: contract,
+                asset: asset,
+                displayPrice: displayPrice,
+                fmt: fmt,
+                onExecute: { contractsToSell in
+                    sellOption(contract, contractsToSell: contractsToSell)
+                    sellingOption = nil
+                }
+            )
+        }
         .sheet(item: $tradingOption) { opt in
             OptionTradeModal(
                 option: opt,
@@ -126,27 +148,91 @@ struct AssetDetailsView: View {
 
     private func generateChartData() {
         var rng = SeededRNG(seed: asset.ticker.hashValue)
-        let monthlyVol = asset.annualVolatility / sqrt(12.0)
-        let monthlyRet = asset.annualReturn / 12.0
+        let dailyVol = asset.annualVolatility / sqrt(252.0)
+        let dailyRet = asset.annualReturn / 252.0
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
 
         var price = displayPrice
-        var rawHistory: [Double] = [price]
-        for _ in 0..<12 {
-            let noise = Double.random(in: -monthlyVol...monthlyVol, using: &rng)
+        var rawHistory: [Double] = []
+        for _ in 0 ..< 30 {
+            let noise = Double.random(in: -dailyVol ... dailyVol, using: &rng)
             price /= max(1 + noise, 0.5)
             rawHistory.insert(price, at: 0)
         }
-        historicalPoints = rawHistory.enumerated().map { i, p in
-            PriceDataPoint(monthOffset: i - 12, price: p)
+        historicalPoints = rawHistory.enumerated().compactMap { i, p in
+            cal.date(byAdding: .day, value: i - 30, to: today).map { PriceDataPoint(date: $0, price: p) }
         }
 
         price = displayPrice
-        projectedPoints = [PriceDataPoint(monthOffset: 0, price: price)]
-        for i in 1...12 {
-            let noise = Double.random(in: -monthlyVol * 0.4...monthlyVol * 0.4, using: &rng)
-            price *= (1 + monthlyRet + noise)
-            projectedPoints.append(PriceDataPoint(monthOffset: i, price: price))
+        projectedPoints = []
+        for i in 0 ... 30 {
+            guard let date = cal.date(byAdding: .day, value: i, to: today) else { continue }
+            if i > 0 {
+                let noise = Double.random(in: -dailyVol * 0.4 ... dailyVol * 0.4, using: &rng)
+                price *= (1 + dailyRet + noise)
+            }
+            projectedPoints.append(PriceDataPoint(date: date, price: price))
         }
+    }
+
+    private func loadChartData() async {
+        /*generateChartData()*/  // display seeded fallback immediately
+
+        guard let assetId = appState.assetIdByTicker[asset.ticker] else {
+            print("[Chart] \(asset.ticker): no assetId in assetIdByTicker — keys: \(appState.assetIdByTicker.keys.sorted())")
+            return
+        }
+
+        let marketData: BackendAPIClient.MarketDataResponse
+        do {
+            marketData = try await appState.apiClient.fetchMarketData(assetId: assetId)
+        } catch {
+            print("[Chart] \(asset.ticker) fetchMarketData failed: \(error)")
+            return
+        }
+
+        print("[Chart] \(asset.ticker) — history: \(marketData.priceHistory.count) rows, forecast: \(marketData.priceForecast30d.count) points")
+
+        guard !marketData.priceHistory.isEmpty || !marketData.priceForecast30d.isEmpty else {
+            print("[Chart] \(asset.ticker): both arrays empty, keeping seeded data")
+            return
+        }
+
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let dateFmt = DateFormatter()
+        dateFmt.dateFormat = "yyyy-MM-dd"
+        dateFmt.locale = Locale(identifier: "en_US_POSIX")
+        dateFmt.timeZone = TimeZone(abbreviation: "UTC")
+
+        var histLookup: [String: Double] = [:]
+        for row in marketData.priceHistory { histLookup[row.date] = row.close }
+
+        var forecastLookup: [String: Double] = [:]
+        for pt in marketData.priceForecast30d { forecastLookup[pt.date] = pt.price }
+
+        print("[Chart] \(asset.ticker) histLookup keys: \(histLookup.keys.sorted())")
+        print("[Chart] \(asset.ticker) forecastLookup keys: \(forecastLookup.keys.sorted())")
+
+        var lastPrice: Double = marketData.priceHistory.first.map { $0.close } ?? displayPrice
+        var histPoints: [PriceDataPoint] = []
+        for dayOffset in -30 ..< 0 {
+            guard let date = cal.date(byAdding: .day, value: dayOffset, to: today) else { continue }
+            if let p = histLookup[dateFmt.string(from: date)] { lastPrice = p }
+            histPoints.append(PriceDataPoint(date: date, price: lastPrice))
+        }
+
+        var lastForecastPrice: Double = histPoints.last?.price ?? displayPrice
+        var forecastPoints: [PriceDataPoint] = []
+        for dayOffset in 0 ... 30 {
+            guard let date = cal.date(byAdding: .day, value: dayOffset, to: today) else { continue }
+            if let p = forecastLookup[dateFmt.string(from: date)] { lastForecastPrice = p }
+            forecastPoints.append(PriceDataPoint(date: date, price: lastForecastPrice))
+        }
+
+        historicalPoints = histPoints
+        projectedPoints = forecastPoints
     }
 
     // MARK: - Options chain fetch
@@ -181,6 +267,7 @@ struct AssetDetailsView: View {
         }
         guard let assetId = appState.assetIdByTicker[asset.ticker],
               let userId  = appState.currentUser?.userId else { return }
+        appState.adjustCashBalance(by: -(q * price))
         Task {
             try? await appState.apiClient.upsertUserAsset(userId: userId, assetId: assetId,
                                                           quantity: newShares, avgCostBasis: newAvgCost)
@@ -193,13 +280,17 @@ struct AssetDetailsView: View {
         let remaining = old.shares - Double(shareQty)
         guard let assetId = appState.assetIdByTicker[asset.ticker],
               let userId  = appState.currentUser?.userId else { return }
+        let sharesSold = min(Double(shareQty), old.shares)
+        let proceeds   = sharesSold * displayPrice
         if remaining <= 0 {
             appState.holdings.remove(at: idx)
+            appState.adjustCashBalance(by: proceeds)
             Task { try? await appState.apiClient.deleteUserAsset(userId: userId, assetId: assetId) }
             dismiss()
         } else {
             appState.holdings[idx] = HeldAsset(asset: old.asset, shares: remaining,
                                                avgCost: old.avgCost, currentPrice: old.currentPrice)
+            appState.adjustCashBalance(by: proceeds)
             Task {
                 try? await appState.apiClient.upsertUserAsset(userId: userId, assetId: assetId,
                                                               quantity: remaining, avgCostBasis: old.avgCost)
@@ -227,6 +318,8 @@ struct AssetDetailsView: View {
         appState.optionsByTicker[asset.ticker] = arr
 
         guard let userId = appState.currentUser?.userId else { return }
+        let optionCost = option.premium * Double(contracts) * 100
+        appState.adjustCashBalance(by: -optionCost)
         Task {
             try? await appState.apiClient.upsertUserOption(userId: userId,
                                                            optionId: option.optionId,
@@ -234,13 +327,42 @@ struct AssetDetailsView: View {
         }
         if bundleShares { addShares(qty: Double(contracts * 100)) }
     }
+
+    private func sellOption(_ contract: OptionsContract, contractsToSell: Int) {
+        var arr = appState.optionsByTicker[asset.ticker] ?? []
+        guard let idx = arr.firstIndex(where: { $0.id == contract.id }) else { return }
+        let remaining = arr[idx].contracts - contractsToSell
+        guard let userId = appState.currentUser?.userId,
+              let optionId = contract.optionId else { return }
+        let proceeds = contract.currentValue * Double(contractsToSell) * 100
+        if remaining <= 0 {
+            arr.remove(at: idx)
+            appState.optionsByTicker[asset.ticker] = arr.isEmpty ? nil : arr
+            appState.adjustCashBalance(by: proceeds)
+            Task { try? await appState.apiClient.deleteUserOption(userId: userId, optionId: optionId) }
+        } else {
+            let updated = OptionsContract(optionId: optionId,
+                                          underlyingTicker: contract.underlyingTicker,
+                                          type: contract.type,
+                                          strikePrice: contract.strikePrice,
+                                          expiryDate: contract.expiryDate,
+                                          contracts: remaining,
+                                          costBasis: contract.costBasis,
+                                          currentValue: contract.currentValue)
+            arr[idx] = updated
+            appState.optionsByTicker[asset.ticker] = arr
+            appState.adjustCashBalance(by: proceeds)
+            Task { try? await appState.apiClient.upsertUserOption(userId: userId, optionId: optionId,
+                                                                   contractsHeld: remaining) }
+        }
+    }
 }
 
 // MARK: - Price Data Point
 
 struct PriceDataPoint: Identifiable {
     let id = UUID()
-    let monthOffset: Int
+    let date: Date
     let price: Double
 }
 
@@ -344,21 +466,32 @@ private struct AssetPriceChart: View {
     let projected:  [PriceDataPoint]
     let currentPrice: Double
 
-    @State private var selectedMonthOffset: Double? = nil
+    @State private var selectedDate: Date? = nil
 
-    private func interpolatedPrice(at offset: Double) -> Double? {
-        let all = (historical + projected).sorted { $0.monthOffset < $1.monthOffset }
+    private var today: Date { Calendar.current.startOfDay(for: Date()) }
+
+    private var axisMarkDates: [Date] {
+        let cal = Calendar.current
+        return [-30, -15, 0, 15, 30].compactMap { cal.date(byAdding: .day, value: $0, to: today) }
+    }
+
+    private func interpolatedPrice(at date: Date) -> Double? {
+        let all = (historical + projected).sorted { $0.date < $1.date }
         guard all.count >= 2 else { return nil }
-        guard let lo = all.last(where: { Double($0.monthOffset) <= offset }),
-              let hi = all.first(where: { Double($0.monthOffset) >= offset }) else {
+        let t = date.timeIntervalSinceReferenceDate
+        guard let lo = all.last(where: { $0.date.timeIntervalSinceReferenceDate <= t }),
+              let hi = all.first(where: { $0.date.timeIntervalSinceReferenceDate >= t }) else {
             return all.first?.price
         }
-        guard lo.monthOffset != hi.monthOffset else { return lo.price }
-        let t = (offset - Double(lo.monthOffset)) / Double(hi.monthOffset - lo.monthOffset)
-        return lo.price + t * (hi.price - lo.price)
+        guard lo.date != hi.date else { return lo.price }
+        let loT = lo.date.timeIntervalSinceReferenceDate
+        let hiT = hi.date.timeIntervalSinceReferenceDate
+        let fraction = (t - loT) / (hiT - loT)
+        return lo.price + fraction * (hi.price - lo.price)
     }
 
     var body: some View {
+        let cal = Calendar.current
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("PERFORMANCE")
@@ -374,18 +507,18 @@ private struct AssetPriceChart: View {
 
             Chart {
                 ForEach(historical) { pt in
-                    LineMark(x: .value("Month", pt.monthOffset), y: .value("Price", pt.price))
+                    LineMark(x: .value("Date", pt.date), y: .value("Price", pt.price))
                         .foregroundStyle(by: .value("Segment", "Historical"))
                         .interpolationMethod(.catmullRom)
                         .lineStyle(StrokeStyle(lineWidth: 2))
                 }
                 ForEach(projected) { pt in
-                    LineMark(x: .value("Month", pt.monthOffset), y: .value("Price", pt.price))
+                    LineMark(x: .value("Date", pt.date), y: .value("Price", pt.price))
                         .foregroundStyle(by: .value("Segment", "Projected"))
                         .interpolationMethod(.catmullRom)
                         .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
                 }
-                RuleMark(x: .value("Today", 0))
+                RuleMark(x: .value("Today", today))
                     .foregroundStyle(.white.opacity(0.2))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                     .annotation(position: .top, alignment: .center) {
@@ -394,18 +527,19 @@ private struct AssetPriceChart: View {
                             .foregroundStyle(.white.opacity(0.45))
                             .tracking(1.5)
                     }
-                PointMark(x: .value("Month", 0), y: .value("Price", currentPrice))
+                PointMark(x: .value("Date", today), y: .value("Price", currentPrice))
                     .foregroundStyle(.white)
                     .symbolSize(70)
             }
             .chartForegroundStyleScale(["Historical": Color.teal, "Projected": Color.teal.opacity(0.5)])
             .chartLegend(.hidden)
             .chartXAxis {
-                AxisMarks(values: [-12, -6, 0, 6, 12]) { value in
+                AxisMarks(values: axisMarkDates) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(.white.opacity(0.06))
                     AxisValueLabel {
-                        if let v = value.as(Int.self) {
-                            Text(v == 0 ? "Now" : (v < 0 ? "\(-v)m ago" : "+\(v)m"))
+                        if let d = value.as(Date.self) {
+                            let days = cal.dateComponents([.day], from: today, to: d).day ?? 0
+                            Text(days == 0 ? "Now" : (days < 0 ? "\(-days)d ago" : "+\(days)d"))
                                 .font(.system(size: 9)).foregroundStyle(.white.opacity(0.3))
                         }
                     }
@@ -421,13 +555,13 @@ private struct AssetPriceChart: View {
                     }
                 }
             }
-            .chartXSelection(value: $selectedMonthOffset)
+            .chartXSelection(value: $selectedDate)
             .chartOverlay { proxy in
                 GeometryReader { geo in
                     let plot = geo[proxy.plotAreaFrame]
-                    if let offset = selectedMonthOffset,
-                       let xPos  = proxy.position(forX: offset),
-                       let price = interpolatedPrice(at: offset) {
+                    if let date = selectedDate,
+                       let xPos  = proxy.position(forX: date),
+                       let price = interpolatedPrice(at: date) {
                         let xScreen = plot.minX + xPos
                         Rectangle()
                             .fill(.white.opacity(0.2))
@@ -590,10 +724,7 @@ private struct YourPositionPanel: View {
 private struct ActiveOptionsSection: View {
     let options: [OptionsContract]
     let fmt: NumberFormatter
-
-    private static let dateFmt: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "MMM d, ''yy"; return f
-    }()
+    var onSell: ((OptionsContract) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -613,7 +744,8 @@ private struct ActiveOptionsSection: View {
             } else {
                 VStack(spacing: 10) {
                     ForEach(options) { contract in
-                        OptionsContractRow(contract: contract, fmt: fmt)
+                        OptionsContractRow(contract: contract, fmt: fmt,
+                                           onSell: { onSell?(contract) })
                     }
                 }
             }
@@ -625,6 +757,7 @@ private struct ActiveOptionsSection: View {
 private struct OptionsContractRow: View {
     let contract: OptionsContract
     let fmt: NumberFormatter
+    var onSell: (() -> Void)? = nil
 
     private static let dateFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "MMM d, ''yy"; return f
@@ -656,6 +789,16 @@ private struct OptionsContractRow: View {
                 Text("\(pnl >= 0 ? "+" : "")\(String(format: "%.1f", pnl))%")
                     .font(.system(size: 11, weight: .medium)).foregroundStyle(pnl >= 0 ? Color.teal : Color.pink)
             }
+            Button(action: { onSell?() }) {
+                Text("Sell")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.pink)
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                    .background(Color.pink.opacity(0.12))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.pink.opacity(0.3), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
         }
         .padding(14).background(.white.opacity(0.03)).clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.06), lineWidth: 1))
@@ -984,6 +1127,158 @@ struct OptionTradeModal: View {
         VStack(spacing: 3) {
             Text(label).font(.system(size: 8, weight: .bold)).foregroundStyle(.white.opacity(0.35)).tracking(1)
             Text(value).font(.system(size: 12, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+        }
+    }
+}
+
+// MARK: - Option Sell Modal
+
+private struct OptionSellModal: View {
+    let contract: OptionsContract
+    let asset: AssetInfo
+    let displayPrice: Double
+    let fmt: NumberFormatter
+    let onExecute: (Int) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var contractQty: Int = 1
+
+    private var typeColor: Color { contract.type == .call ? Color.teal : Color.pink }
+    private var proceeds: Double { contract.currentValue * Double(contractQty) * 100 }
+    private var maxSellable: Int { contract.contracts }
+
+    private static let dateFmt: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"; return f
+    }()
+
+    var body: some View {
+        ZStack {
+            Color(red: 0.039, green: 0.027, blue: 0.063).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(.white.opacity(0.15)).frame(width: 36, height: 4)
+                    .padding(.top, 14).padding(.bottom, 20)
+
+                ScrollView {
+                    VStack(spacing: 20) {
+
+                        // Option summary card
+                        VStack(spacing: 12) {
+                            HStack {
+                                HStack(spacing: 6) {
+                                    Text(contract.type.rawValue.uppercased())
+                                        .font(.system(size: 10, weight: .bold)).foregroundStyle(typeColor).tracking(2)
+                                        .padding(.horizontal, 10).padding(.vertical, 5)
+                                        .background(typeColor.opacity(0.12)).clipShape(Capsule())
+                                        .overlay(Capsule().stroke(typeColor.opacity(0.3), lineWidth: 1))
+                                    Text("SELL")
+                                        .font(.system(size: 10, weight: .bold)).foregroundStyle(Color.pink).tracking(2)
+                                        .padding(.horizontal, 10).padding(.vertical, 5)
+                                        .background(Color.pink.opacity(0.12)).clipShape(Capsule())
+                                        .overlay(Capsule().stroke(Color.pink.opacity(0.3), lineWidth: 1))
+                                }
+                                Spacer()
+                                Text(asset.ticker)
+                                    .font(.system(size: 18, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+                            }
+                            Divider().background(.white.opacity(0.08))
+                            HStack {
+                                VStack(spacing: 3) {
+                                    Text("STRIKE").font(.system(size: 8, weight: .bold)).foregroundStyle(.white.opacity(0.35)).tracking(1)
+                                    Text("$\(Int(contract.strikePrice))").font(.system(size: 12, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+                                }
+                                Spacer()
+                                VStack(spacing: 3) {
+                                    Text("HELD").font(.system(size: 8, weight: .bold)).foregroundStyle(.white.opacity(0.35)).tracking(1)
+                                    Text("\(contract.contracts) contract\(contract.contracts == 1 ? "" : "s")")
+                                        .font(.system(size: 12, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+                                }
+                                Spacer()
+                                VStack(spacing: 3) {
+                                    Text("EXPIRES").font(.system(size: 8, weight: .bold)).foregroundStyle(.white.opacity(0.35)).tracking(1)
+                                    Text(Self.dateFmt.string(from: contract.expiryDate))
+                                        .font(.system(size: 12, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+                                }
+                            }
+                        }
+                        .padding(18).glassCard(cornerRadius: 22).padding(.horizontal, 20)
+
+                        // Contracts stepper
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("CONTRACTS TO SELL")
+                                .font(.system(size: 10, weight: .bold)).foregroundStyle(.white.opacity(0.5)).tracking(1.5)
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(contractQty) of \(maxSellable) contract\(maxSellable == 1 ? "" : "s")")
+                                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                                    Text("= \(contractQty * 100) shares exposure")
+                                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.4))
+                                }
+                                Spacer()
+                                HStack(spacing: 0) {
+                                    Button { if contractQty > 1 { contractQty -= 1 } } label: {
+                                        Image(systemName: "minus").font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(contractQty > 1 ? Color.pink : .white.opacity(0.2))
+                                            .frame(width: 40, height: 40).background(.white.opacity(0.05))
+                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    }.disabled(contractQty <= 1)
+                                    Text("\(contractQty)")
+                                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(.white).frame(width: 48)
+                                    Button { if contractQty < maxSellable { contractQty += 1 } } label: {
+                                        Image(systemName: "plus").font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(contractQty < maxSellable ? Color.pink : .white.opacity(0.2))
+                                            .frame(width: 40, height: 40)
+                                            .background(contractQty < maxSellable ? Color.pink.opacity(0.12) : Color.white.opacity(0.04))
+                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    }.disabled(contractQty >= maxSellable)
+                                }
+                            }
+                        }
+                        .padding(18).glassCard(cornerRadius: 22).padding(.horizontal, 20)
+
+                        // Proceeds summary
+                        VStack(spacing: 14) {
+                            HStack {
+                                Text("Premium per share").font(.system(size: 13)).foregroundStyle(.white.opacity(0.5))
+                                Spacer()
+                                Text(String(format: "$%.2f", contract.currentValue))
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+                            }
+                            HStack {
+                                Text("Contracts × 100 shares").font(.system(size: 13)).foregroundStyle(.white.opacity(0.5))
+                                Spacer()
+                                Text("\(contractQty) × 100")
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+                            }
+                            Divider().background(.white.opacity(0.08))
+                            HStack {
+                                Text("Estimated proceeds").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                                Spacer()
+                                Text(fmt.string(from: NSNumber(value: proceeds)) ?? "")
+                                    .font(.system(size: 20, weight: .light, design: .rounded)).foregroundStyle(Color.teal)
+                            }
+                        }
+                        .animation(.easeInOut(duration: 0.15), value: contractQty)
+                        .padding(18).glassCard(cornerRadius: 22).padding(.horizontal, 20)
+
+                        Button { onExecute(contractQty) } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                Text("Confirm Sell")
+                            }
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).frame(height: 54)
+                            .background(Color.pink).clipShape(RoundedRectangle(cornerRadius: 18))
+                        }
+                        .padding(.horizontal, 20)
+
+                        Spacer(minLength: 20)
+                    }
+                }
+            }
         }
     }
 }

@@ -215,6 +215,7 @@ actor BackendAPIClient {
         let premium: Double?
         let impliedVolatility: Double?
         let contractSize: Int
+        let contractsHeld: Int?   // returned by user-scoped endpoints
 
         enum CodingKeys: String, CodingKey {
             case optionId         = "option_id"
@@ -225,6 +226,7 @@ actor BackendAPIClient {
             case premium
             case impliedVolatility = "implied_volatility"
             case contractSize     = "contract_size"
+            case contractsHeld    = "contracts_held"
         }
     }
 
@@ -250,12 +252,61 @@ actor BackendAPIClient {
 
     func updateUserRiskProfile(userId: Int, riskProfile: String) async throws {
         struct Body: Encodable { let risk_profile: String }
-        _ = try await patch(endpoint: "users/\(userId)", body: Body(risk_profile: riskProfile))
+        _ = try await put(endpoint: "users/\(userId)", body: Body(risk_profile: riskProfile))
+    }
+
+    func updateCashBalance(userId: Int, cashBalance: Double) async throws {
+        struct Body: Encodable { let cash_balance: Double }
+        _ = try await put(endpoint: "users/\(userId)", body: Body(cash_balance: cashBalance))
     }
 
     func fetchAllAssetOptions(assetId: Int) async throws -> [OptionOut] {
         let data = try await get(endpoint: "assets/\(assetId)/options")
         return try JSONDecoder().decode([OptionOut].self, from: data)
+    }
+
+    // MARK: - Market Data
+
+    struct PriceRow: Codable {
+        let date: String
+        let open: Double?
+        let high: Double?
+        let low: Double?
+        let close: Double
+        let adjClose: Double?
+        let volume: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case date, open, high, low, close
+            case adjClose = "adj_close"
+            case volume
+        }
+    }
+
+    struct ForecastPoint: Codable {
+        let date: String
+        let price: Double
+    }
+
+    struct MarketDataResponse: Codable {
+        let assetId: Int
+        let ticker: String
+        let priceHistory: [PriceRow]
+        let historicalVolatility30d: Double?
+        let priceForecast30d: [ForecastPoint]
+
+        enum CodingKeys: String, CodingKey {
+            case assetId = "asset_id"
+            case ticker
+            case priceHistory = "price_history"
+            case historicalVolatility30d = "historical_volatility_30d"
+            case priceForecast30d = "price_forecast_30d"
+        }
+    }
+
+    func fetchMarketData(assetId: Int) async throws -> MarketDataResponse {
+        let data = try await get(endpoint: "assets/\(assetId)/market-data")
+        return try JSONDecoder().decode(MarketDataResponse.self, from: data)
     }
 
     func upsertUserAsset(userId: Int, assetId: Int, quantity: Double, avgCostBasis: Double?) async throws {
