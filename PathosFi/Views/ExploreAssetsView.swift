@@ -260,13 +260,9 @@ private struct AssetMarketplaceRow: View {
         }
     }
 
-    private var returnStr: String {
-        let pct = asset.annualReturn * 100
+    private var dayChangeStr: String {
+        let pct = asset.dayChangePercent
         return (pct >= 0 ? "+" : "") + String(format: "%.1f", pct) + "%"
-    }
-
-    private var volStr: String {
-        String(format: "%.0f", asset.annualVolatility * 100) + "% vol"
     }
 
     var body: some View {
@@ -293,14 +289,9 @@ private struct AssetMarketplaceRow: View {
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(returnStr)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundStyle(asset.annualReturn >= 0 ? Color.teal : Color.pink)
-                Text(volStr)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.35))
-            }
+            Text(dayChangeStr)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(asset.dayChangePercent >= 0 ? Color.teal : Color.pink)
 
             ZStack {
                 RoundedRectangle(cornerRadius: 10)

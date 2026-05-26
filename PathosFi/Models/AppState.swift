@@ -83,9 +83,13 @@ class AppState: ObservableObject {
                     name: ao.assetName ?? known?.name ?? ao.ticker,
                     annualReturn: known?.annualReturn ?? 0,
                     annualVolatility: known?.annualVolatility ?? 0.20,
-                    category: category
+                    category: category,
+                    prevClose: ao.prevDayPrice?.close,
+                    currentClose: ao.currentDayPrice?.close
                 )
             }
+
+            let priceByTicker = Dictionary(uniqueKeysWithValues: backendAssets.map { ($0.ticker, $0) })
 
             holdings = userAssets.map { ua in
                 let cost = ua.avgCostBasis ?? 0
@@ -96,14 +100,15 @@ class AppState: ObservableObject {
                 case "option": category = .option
                 default:       category = .equity
                 }
-                let info = assetLib[ua.ticker] ?? AssetInfo(
+                let info = priceByTicker[ua.ticker] ?? assetLib[ua.ticker] ?? AssetInfo(
                     ticker: ua.ticker,
                     name: name,
                     annualReturn: 0,
                     annualVolatility: 0.20,
                     category: category
                 )
-                return HeldAsset(asset: info, shares: ua.quantity, avgCost: cost, currentPrice: cost)
+                let livePrice = info.currentClose ?? cost
+                return HeldAsset(asset: info, shares: ua.quantity, avgCost: cost, currentPrice: livePrice)
             }
 
             let isoFormatter = DateFormatter()

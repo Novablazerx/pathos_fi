@@ -82,7 +82,8 @@ struct AssetDetailsView: View {
                         AssetPriceChart(
                             historical: historicalPoints,
                             projected:  projectedPoints,
-                            currentPrice: projectedPoints.first?.price ?? displayPrice
+                            currentPrice: projectedPoints.first?.price ?? displayPrice,
+                            annualVolatility: asset.annualVolatility
                         )
 
                         YourPositionPanel(
@@ -426,17 +427,17 @@ private struct AssetDetailHeader: View {
             Spacer()
 
             if let h = holding {
-                let gain = h.gainPct
+                let dayChange = h.asset.dayChangePercent
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(fmt.string(from: NSNumber(value: h.value)) ?? "")
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
-                    Text("\(gain >= 0 ? "+" : "")\(String(format: "%.1f", gain))%")
+                    Text("\(dayChange >= 0 ? "+" : "")\(String(format: "%.1f", dayChange))%")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(gain >= 0 ? Color.teal : Color.pink)
+                        .foregroundStyle(dayChange >= 0 ? Color.teal : Color.pink)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .background((gain >= 0 ? Color.teal : Color.pink).opacity(0.12))
+                        .background((dayChange >= 0 ? Color.teal : Color.pink).opacity(0.12))
                         .clipShape(Capsule())
                 }
             } else {
@@ -465,6 +466,12 @@ private struct AssetPriceChart: View {
     let historical: [PriceDataPoint]
     let projected:  [PriceDataPoint]
     let currentPrice: Double
+    var annualVolatility: Double = 0
+
+    private var thirtyDayReturn: Double {
+        guard currentPrice > 0, let endPrice = projected.last?.price else { return 0 }
+        return (endPrice - currentPrice) / currentPrice * 100
+    }
 
     @State private var selectedDate: Date? = nil
 
@@ -579,6 +586,30 @@ private struct AssetPriceChart: View {
                 }
             }
             .frame(height: 220)
+
+            Divider().background(.white.opacity(0.06))
+
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("VOLATILITY")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.3))
+                        .tracking(1)
+                    Text(String(format: "%.0f%%", annualVolatility * 100))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("30D RETURN")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.3))
+                        .tracking(1)
+                    Text((thirtyDayReturn >= 0 ? "+" : "") + String(format: "%.1f%%", thirtyDayReturn))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(thirtyDayReturn >= 0 ? Color.teal : Color.pink)
+                }
+            }
         }
         .padding(20)
         .glassCard(cornerRadius: 28)

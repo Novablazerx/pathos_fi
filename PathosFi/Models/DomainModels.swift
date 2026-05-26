@@ -46,6 +46,13 @@ struct AssetInfo: Identifiable {
     let annualReturn: Double     // historical mean annual return
     let annualVolatility: Double // historical annual std dev
     let category: AssetCategory
+    var prevClose: Double? = nil
+    var currentClose: Double? = nil
+
+    var dayChangePercent: Double {
+        guard let prev = prevClose, prev > 0, let curr = currentClose else { return 0 }
+        return (curr - prev) / prev * 100
+    }
 }
 
 enum AssetCategory: String, CaseIterable, Hashable {

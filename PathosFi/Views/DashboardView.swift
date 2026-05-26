@@ -175,6 +175,13 @@ private struct ProjectedValueCard: View {
         return formatter.string(from: NSNumber(value: projectedValue)) ?? "$\(projectedValue.safeInt())"
     }
 
+    private var formattedCurrent: String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.maximumFractionDigits = 0
+        return formatter.string(from: NSNumber(value: capital.safeValue())) ?? "$\(capital.safeInt())"
+    }
+
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Ellipse()
@@ -194,6 +201,15 @@ private struct ProjectedValueCard: View {
                     .foregroundStyle(.white)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Text("Current value:")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.4))
+                    Text(formattedCurrent)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
 
                 HStack(spacing: 6) {
                     Image(systemName: "chart.line.uptrend.xyaxis")
@@ -236,7 +252,7 @@ struct ProbabilityPieCard: View {
         switch color {
         case .upside:     return "\(f(capital)) – \(f(projected))"
         case .acceptable: return "\(f(floor)) – \(f(capital))"
-        case .tailRisk:   return "Below \(f(floor))"
+        case .tailRisk:   return "\(f(0)) – \(f(floor))"
         }
     }
 
@@ -497,10 +513,10 @@ private struct HeldAssetRow: View {
                 Text(fmt.string(from: NSNumber(value: holding.value)) ?? "")
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
-                let gain = holding.gainPct
-                Text("\(gain >= 0 ? "+" : "")\(String(format: "%.1f", gain))%")
+                let dayChange = holding.asset.dayChangePercent
+                Text("\(dayChange >= 0 ? "+" : "")\(String(format: "%.1f", dayChange))%")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(gain >= 0 ? Color.teal : Color.pink)
+                    .foregroundStyle(dayChange >= 0 ? Color.teal : Color.pink)
             }
 
             Button { onExpand?() } label: {

@@ -180,13 +180,17 @@ actor BackendAPIClient {
         let assetName: String?
         let assetType: String?
         let sector: String?
+        let prevDayPrice: PriceRow?
+        let currentDayPrice: PriceRow?
 
         enum CodingKeys: String, CodingKey {
-            case assetId  = "asset_id"
+            case assetId       = "asset_id"
             case ticker
-            case assetName = "asset_name"
-            case assetType = "asset_type"
+            case assetName     = "asset_name"
+            case assetType     = "asset_type"
             case sector
+            case prevDayPrice    = "prev_day_price"
+            case currentDayPrice = "current_day_price"
         }
     }
 
