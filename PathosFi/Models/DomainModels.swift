@@ -16,6 +16,7 @@ struct SimulationResult {
 enum HedgeType: String, Codable {
     case inverseETF = "Inverse ETF"
     case putOption  = "Put Option"
+    case callOption = "Call Option"
     case bond       = "Bond"
     case cash       = "Cash"
     case commodity  = "Commodity"

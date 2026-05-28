@@ -26,6 +26,10 @@ struct ActionableView: View {
 
                             AuraConstraintBanner(maxLoss: appState.riskProfile.maxLossPercent)
 
+                            if let rationale = viewModel.rlRationale {
+                                RLRationaleBanner(rationale: rationale, status: viewModel.rlStatus)
+                            }
+
                             // Ghost simulation progress card
                             if viewModel.simulatingPairId != nil {
                                 SynthesisProgressCard()
@@ -85,7 +89,11 @@ struct ActionableView: View {
             ExecuteConfirmationSheet(pair: pair)
         }
         .task {
-            await viewModel.loadRecommendations(profile: appState.riskProfile)
+            await viewModel.loadRecommendations(
+                profile: appState.riskProfile,
+                userId: appState.currentUser?.userId,
+                portfolioValue: appState.portfolioValue
+            )
         }
     }
 }
@@ -183,6 +191,41 @@ private struct AuraConstraintBanner: View {
                 startPoint: .leading, endPoint: .trailing
             )
         )
+        .glassCard(cornerRadius: 24)
+        .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - RL Rationale Banner
+
+private struct RLRationaleBanner: View {
+    let rationale: String
+    let status: BackendAPIClient.RLStatus?
+
+    private var isApproved: Bool { status == .approved }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill((isApproved ? Color.green : Color.orange).opacity(0.12))
+                    .frame(width: 40, height: 40)
+                Image(systemName: isApproved ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(isApproved ? Color.green : Color.orange)
+                    .font(.system(size: 16))
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isApproved ? "Plan Approved" : "Fallback: Hold All")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                Text(rationale)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.5))
+                    .lineLimit(3)
+            }
+            Spacer()
+        }
+        .padding(14)
         .glassCard(cornerRadius: 24)
         .padding(.horizontal, 16)
     }
@@ -454,6 +497,7 @@ private struct HedgeTypeBadge: View {
         switch hedgeType {
         case .inverseETF: return .orange
         case .putOption:  return Color.purple
+        case .callOption: return Color.green
         case .bond:       return .blue
         case .cash:       return .gray
         case .commodity:  return Color.teal

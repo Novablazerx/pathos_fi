@@ -333,6 +333,104 @@ actor BackendAPIClient {
         try await delete(endpoint: "users/\(userId)/options/\(optionId)")
     }
 
+    // MARK: - RL Portfolio Recommendation
+
+    struct RLRecommendInput: Encodable {
+        let risk_margin: Double
+        let horizon_days: Int
+    }
+
+    enum RLStatus: String, Codable {
+        case approved             = "approved"
+        case rejectedFallbackHold = "rejected_fallback_hold"
+    }
+
+    enum RLTradeSide: String, Codable {
+        case buy  = "buy"
+        case sell = "sell"
+        case hold = "hold"
+    }
+
+    enum RLContractType: String, Codable {
+        case put  = "put"
+        case call = "call"
+    }
+
+    struct RLTradeAction: Codable {
+        let ticker: String
+        let side: RLTradeSide
+        let shares: Double
+        let notionalUsd: Double
+
+        enum CodingKeys: String, CodingKey {
+            case ticker, side, shares
+            case notionalUsd = "notional_usd"
+        }
+    }
+
+    struct RLHedgeAction: Codable {
+        let ticker: String
+        let contractType: RLContractType
+        let contracts: Int
+        let strike: Double
+        let expiry: String
+        let premiumPerContract: Double
+        let totalPremium: Double
+
+        enum CodingKeys: String, CodingKey {
+            case ticker
+            case contractType       = "contract_type"
+            case contracts, strike, expiry
+            case premiumPerContract = "premium_per_contract"
+            case totalPremium       = "total_premium"
+        }
+    }
+
+    struct RLStressTest: Codable {
+        let crashPct: Double
+        let projectedWorstCaseValue: Double
+        let projectedMaxLossUsd: Double
+        let riskMargin: Double
+        let marginBreach: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case crashPct                = "crash_pct"
+            case projectedWorstCaseValue = "projected_worst_case_value"
+            case projectedMaxLossUsd     = "projected_max_loss_usd"
+            case riskMargin              = "risk_margin"
+            case marginBreach            = "margin_breach"
+        }
+    }
+
+    struct RLRecommendResponse: Codable {
+        let portfolioId: String
+        let status: RLStatus
+        let rationale: String
+        let currentValue: Double
+        let trades: [RLTradeAction]
+        let hedges: [RLHedgeAction]
+        let stressTest: RLStressTest
+        let rlModelUsed: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case portfolioId = "portfolio_id"
+            case status, rationale
+            case currentValue = "current_value"
+            case trades, hedges
+            case stressTest  = "stress_test"
+            case rlModelUsed = "rl_model_used"
+        }
+    }
+
+    /// POST /v1/rl-portfolio/users/{userId}/recommend — runs PPO policy to generate a trade/hedge plan.
+    func fetchRLRecommendation(userId: Int, riskMargin: Double, horizonDays: Int = 30) async throws -> RLRecommendResponse {
+        let body = RLRecommendInput(risk_margin: riskMargin, horizon_days: horizonDays)
+        guard let data = try? await post(endpoint: "rl-portfolio/users/\(userId)/recommend", body: body) else {
+            throw APIError.networkFailure
+        }
+        return try JSONDecoder().decode(RLRecommendResponse.self, from: data)
+    }
+
     // MARK: - Private Helpers
 
     enum APIError: Error {
