@@ -11,6 +11,20 @@ struct SimulationResult {
     let simulatedPaths: [[Double]]   // subset of paths for chart display
 }
 
+// MARK: - RL Trade Execution
+
+/// Carries the exact parameters needed to execute a specific RL-recommended trade.
+struct TradeExecutionInfo {
+    enum Action {
+        case buyEquity(shares: Double, notionalUsd: Double)
+        case sellEquity(shares: Double, notionalUsd: Double)
+        case buyOption(isCall: Bool, contracts: Int, strike: Double,
+                       expiry: String, premiumPerContract: Double, totalPremium: Double)
+    }
+    let ticker: String
+    let action: Action
+}
+
 // MARK: - Smart Pair
 
 enum HedgeType: String, Codable {
@@ -34,6 +48,7 @@ struct SmartPairModel: Identifiable {
     let simulatedVaR95: Double
     let hedgeType: HedgeType
     var ghostSimulationResult: SimulationResult? = nil
+    var tradeExecution: TradeExecutionInfo? = nil
 
     var formattedWeights: String {
         "\((primaryWeight * 100).safeInt())% \(primaryAsset.ticker) / \((hedgeWeight * 100).safeInt())% \(hedgeAsset.ticker)"

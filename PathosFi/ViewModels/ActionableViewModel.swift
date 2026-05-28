@@ -96,6 +96,12 @@ class ActionableViewModel: ObservableObject {
             case .hold: thirtyDayReturn = 0
             }
 
+            let execution: TradeExecutionInfo = trade.side == .buy
+                ? TradeExecutionInfo(ticker: trade.ticker,
+                                     action: .buyEquity(shares: trade.shares, notionalUsd: trade.notionalUsd))
+                : TradeExecutionInfo(ticker: trade.ticker,
+                                     action: .sellEquity(shares: trade.shares, notionalUsd: trade.notionalUsd))
+
             pairs.append(SmartPairModel(
                 id: UUID(),
                 name: "\(trade.side.rawValue.capitalized) \(trade.ticker)",
@@ -106,7 +112,8 @@ class ActionableViewModel: ObservableObject {
                 hedgeWeight: 1.0 - primaryWeight,
                 expectedReturn: thirtyDayReturn,
                 simulatedVaR95: stressVaR,
-                hedgeType: .cash
+                hedgeType: .cash,
+                tradeExecution: execution
             ))
         }
 
@@ -130,6 +137,17 @@ class ActionableViewModel: ObservableObject {
             let hedgeWeight = max(hedgeFraction, 0.03)
             let hedgeType: HedgeType = hedge.contractType == .put ? .putOption : .callOption
             let costReturn = -(hedge.totalPremium / max(currentValue, 1)) * 100
+            let optionExecution = TradeExecutionInfo(
+                ticker: hedge.ticker,
+                action: .buyOption(
+                    isCall: hedge.contractType == .call,
+                    contracts: hedge.contracts,
+                    strike: hedge.strike,
+                    expiry: hedge.expiry,
+                    premiumPerContract: hedge.premiumPerContract,
+                    totalPremium: hedge.totalPremium
+                )
+            )
 
             pairs.append(SmartPairModel(
                 id: UUID(),
@@ -141,7 +159,8 @@ class ActionableViewModel: ObservableObject {
                 hedgeWeight: hedgeWeight,
                 expectedReturn: costReturn,
                 simulatedVaR95: stressVaR,
-                hedgeType: hedgeType
+                hedgeType: hedgeType,
+                tradeExecution: optionExecution
             ))
         }
 
